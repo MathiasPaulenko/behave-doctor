@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "behave-doctor"
+version = "1.0.0"
+description = "Static analysis and diagnostics for Behave BDD suites."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Mathias Paulenko" }]
+keywords = ["behave", "bdd", "static-analysis", "lint", "diagnostics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Testing :: BDD",
+    "Typing :: Typed",
+]
+dependencies = ["behave-model>=1.0"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "build>=1.0",
+    "pre-commit>=3.0",
+]
+
+[project.scripts]
+behave-doctor = "behave_doctor.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/MathiasPaulenko/behave-doctor"
+Repository = "https://github.com/MathiasPaulenko/behave-doctor"
+Issues = "https://github.com/MathiasPaulenko/behave-doctor/issues"
+Changelog = "https://github.com/MathiasPaulenko/behave-doctor/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["behave_doctor"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"behave_doctor/py.typed" = "behave_doctor/py.typed"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["behave_doctor"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["behave_doctor"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90
