@@ -1,0 +1,13 @@
+[tool.behave-doctor]
+features_dir = "features/"
+steps_dir = "features/steps/"
+min_severity = "warning"
+
+[tool.behave-doctor.rules]
+"BD203" = { enabled = true, max_scenarios = 15 }
+"BD401" = { enabled = true, max_steps = 8 }
+"BD402" = { enabled = false, max_params = 4 }
+
+[tool.behave-doctor.exclude]
+paths = ["features/legacy/**", "features/archived/**"]
+tags = ["@wip", "@experimental"]
