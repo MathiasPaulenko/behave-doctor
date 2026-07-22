@@ -1,0 +1,8 @@
+id: behave-doctor
+name: behave-doctor
+description: Static analysis and diagnostics for Behave BDD suites.
+entry: behave-doctor scan
+language: python
+types: [text]
+files: \.feature$|\.py$
+pass_filenames: false
