@@ -6,7 +6,7 @@
 [![Docs](https://github.com/MathiasPaulenko/behave-doctor/actions/workflows/docs.yml/badge.svg)](https://mathiaspaulenko.github.io/behave-doctor/)
 [![PyPI](https://img.shields.io/pypi/v/behave-doctor)](https://pypi.org/project/behave-doctor/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/MathiasPaulenko/behave-doctor)
+[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/MathiasPaulenko/behave-doctor)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000)](https://docs.astral.sh/ruff/)
 [![Types: mypy](https://img.shields.io/badge/types-mypy%20strict-blue)](https://mypy-lang.org/)
@@ -50,15 +50,16 @@ step definitions with the AST — never importing or executing them.
     step modules.
 - **3 output formats**: human-readable text (with ANSI colors), JSON, and
   SARIF 2.1.0 for GitHub Code Scanning.
-- **Zero runtime dependencies** beyond `behave-model` — pure Python, fully
-  typed, `mypy --strict` clean, `ruff` clean.
+- **Minimal runtime dependencies** — only `behave-model` (parsing) and
+  `typer` (CLI). Pure Python, fully typed, `mypy --strict` clean, `ruff`
+  clean.
 - **Configurable** via `[tool.behave-doctor]` in `pyproject.toml` — per-rule
   thresholds, enable/disable, severity filtering, tag exclusions.
 - **Python API** for embedding in custom tooling, IDE plugins, or CI
   integrations.
 - **CLI** with `scan`, `list-rules`, `explain`, `stats`, and `graph`
   subcommands.
-- **95% test coverage** — 128 tests across unit and integration suites.
+- **94% test coverage** — 129 tests across unit and integration suites.
 
 ## Installation
 
@@ -223,7 +224,7 @@ report = scan_project("path/to/project", config=config)
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.0.0
+    rev: v1.1.0
     hooks:
       - id: behave-doctor
         args: ["scan", "--severity", "warning", "--no-color"]

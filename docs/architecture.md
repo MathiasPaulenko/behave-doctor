@@ -67,7 +67,7 @@ behave_doctor/
 │   └── sarif.py             #   SARIF 2.1.0
 └── cli/                     # Command-line interface
     ├── __init__.py
-    ├── app.py               #   argparse-based CLI
+    ├── app.py               #   Typer-based CLI
     └── formatters.py        #   Console output helpers
 ```
 
@@ -142,8 +142,9 @@ The `core.py` orchestrator runs the following steps:
   All analysis is static (AST-based).
 - **No side effects** — scanning a project produces no writes, no network
   calls, no state changes.
-- **Zero dependencies** — beyond `behave-model`, behave-doctor has no
-  runtime dependencies. It uses only the Python standard library.
+- **Minimal dependencies** — beyond `behave-model` (parsing) and `typer`
+  (CLI), behave-doctor has no runtime dependencies. It uses only the Python
+  standard library for everything else.
 - **Stable rule IDs** — Rule IDs (BD101-503) are stable and will never
   change, making them safe for CI configs and `pyproject.toml` overrides.
 - **Lazy rule loading** — Rules are loaded lazily via the registry, so only

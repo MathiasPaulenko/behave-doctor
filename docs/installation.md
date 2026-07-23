@@ -4,10 +4,11 @@
 
 - Python **3.11** or newer (tested on 3.11, 3.12, and 3.13)
 - `behave-model >= 1.0` (installed automatically as a dependency)
+- `typer >= 0.12` (installed automatically as a dependency)
 
-behave-doctor has **zero runtime dependencies** beyond `behave-model`. It is
-pure Python, fully typed (`mypy --strict` clean), and works on Linux, macOS,
-and Windows.
+behave-doctor has **minimal runtime dependencies** — only `behave-model`
+(for `.feature` file parsing) and `typer` (for the CLI). It is pure Python,
+fully typed (`mypy --strict` clean), and works on Linux, macOS, and Windows.
 
 ## From PyPI
 
@@ -86,7 +87,7 @@ Add this to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.0.0
+    rev: v1.1.0
     hooks:
       - id: behave-doctor
         args: ["scan", "--severity", "warning", "--no-color"]

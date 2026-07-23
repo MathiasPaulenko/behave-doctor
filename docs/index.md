@@ -43,15 +43,16 @@ step definitions with the AST — never importing or executing them.
     step modules.
 - **3 output formats**: human-readable text (with ANSI colors), JSON, and
   SARIF 2.1.0 for GitHub Code Scanning.
-- **Zero runtime dependencies** beyond `behave-model` — pure Python, fully
-  typed, `mypy --strict` clean, `ruff` clean.
+- **Minimal runtime dependencies** — only `behave-model` (parsing) and
+  `typer` (CLI). Pure Python, fully typed, `mypy --strict` clean, `ruff`
+  clean.
 - **Configurable** via `[tool.behave-doctor]` in `pyproject.toml` — per-rule
   thresholds, enable/disable, severity filtering, tag exclusions.
 - **Python API** for embedding in custom tooling, IDE plugins, or CI
   integrations.
 - **CLI** with `scan`, `list-rules`, `explain`, `stats`, and `graph`
   subcommands.
-- **95% test coverage** — 128 tests across unit and integration suites.
+- **94% test coverage** — 129 tests across unit and integration suites.
 
 ## Quick example
 

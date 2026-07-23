@@ -115,7 +115,7 @@ def test_scan_default_path_is_cwd(
 def test_version_flag() -> None:
     code, out, _ = _run(["--version"])
     assert code == 0
-    assert "1.0.0" in out
+    assert "1.1.0" in out
 
 
 def test_main_returns_exit_code() -> None:

@@ -138,7 +138,7 @@ commit:
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.0.0
+    rev: v1.1.0
     hooks:
       - id: behave-doctor
         args: ["scan", "--severity", "warning", "--no-color"]

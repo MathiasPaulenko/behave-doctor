@@ -8,4 +8,4 @@ def test_import_works() -> None:
 
 
 def test_version_is_set() -> None:
-    assert behave_doctor.__version__ == "1.0.0"
+    assert behave_doctor.__version__ == "1.1.0"

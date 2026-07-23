@@ -33,6 +33,7 @@ htmlcov/
 
 # Internal design specs
 ref/
+site/
 
 # IDE
 .idea/
