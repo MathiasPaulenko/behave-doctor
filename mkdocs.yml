@@ -4,7 +4,7 @@ site_author: Mathias Paulenko
 site_url: https://mathiaspaulenko.github.io/behave-doctor/
 repo_url: https://github.com/MathiasPaulenko/behave-doctor
 repo_name: MathiasPaulenko/behave-doctor
-edit_uri: edit/master/docs/
+edit_uri: edit/main/docs/
 
 theme:
   name: material
@@ -49,6 +49,8 @@ nav:
   - Reporters: reporters.md
   - Python API: python-api.md
   - CI/CD: ci-cd.md
+  - Architecture: architecture.md
+  - FAQ: faq.md
   - Contributing: contributing.md
   - Changelog: changelog.md
 
@@ -72,9 +74,18 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - toc:
       permalink: true
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
