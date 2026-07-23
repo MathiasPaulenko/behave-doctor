@@ -10,17 +10,19 @@ in the repository for full guidelines.
 # Clone and install with dev extras
 git clone https://github.com/MathiasPaulenko/behave-doctor.git
 cd behave-doctor
-pip install -e ".[dev]"
+make dev            # pip install -e ".[dev]"
 pre-commit install
 
 # Day-to-day commands
+make help          # show all available targets
+make check         # lint + format-check + test (full pre-commit check)
 make lint          # ruff check + mypy --strict
 make lint-fix      # auto-fix lint issues
 make format        # ruff format
-make format-check  # verify formatting
 make test          # pytest
 make test-cov      # pytest with >= 90% coverage
 make build         # build sdist + wheel
+make docs-serve    # serve docs locally
 make clean         # remove build artifacts
 ```
 

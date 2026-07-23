@@ -23,7 +23,7 @@ from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.model.step_match import StepMatch
 from behave_doctor.rules.base import Rule
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 def scan_project(
@@ -44,8 +44,18 @@ def scan_project(
 
     Returns:
         A :class:`ProjectReport` with diagnostics, statistics, and exit code.
+
+    Raises:
+        TypeError: If ``path`` is ``None``.
+        FileNotFoundError: If ``path`` does not exist.
+        ScanError: If ``path`` exists but is not a directory or cannot be scanned.
     """
+    if path is None:
+        msg = "scan_project() requires a path argument, got None."
+        raise TypeError(msg)
     project_path = Path(path).resolve()
+    if not project_path.exists():
+        raise FileNotFoundError(f"Project path does not exist: {project_path}")
     if config is None:
         pyproject = project_path / "pyproject.toml"
         config = DoctorConfig.from_pyproject(pyproject) if pyproject.exists() else DoctorConfig()

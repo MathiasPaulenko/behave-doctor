@@ -18,16 +18,29 @@ def _diag(severity: Severity) -> Diagnostic:
     )
 
 
-def test_exit_code_zero_without_errors() -> None:
+def test_exit_code_zero_without_errors_or_warnings() -> None:
     report = ProjectReport(
         project_path=Path("."),
-        diagnostics=[_diag(Severity.WARNING), _diag(Severity.INFO)],
+        diagnostics=[_diag(Severity.INFO), _diag(Severity.HINT)],
         statistics=ProjectStatistics(),
         scanned_at=datetime.now(),
         scan_duration_ms=0,
     )
     assert report.exit_code == 0
     assert report.has_errors is False
+    assert report.has_warnings is False
+
+
+def test_exit_code_one_with_warnings() -> None:
+    report = ProjectReport(
+        project_path=Path("."),
+        diagnostics=[_diag(Severity.WARNING)],
+        statistics=ProjectStatistics(),
+        scanned_at=datetime.now(),
+        scan_duration_ms=0,
+    )
+    assert report.exit_code == 1
+    assert report.has_warnings is True
 
 
 def test_exit_code_one_with_errors() -> None:

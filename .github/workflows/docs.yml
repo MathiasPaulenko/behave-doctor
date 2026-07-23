@@ -25,14 +25,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: Install docs dependencies
-        run: |
-          pip install -e ".[dev]"
-          pip install mkdocs mkdocs-material "mkdocstrings[python]"
+        run: pip install -e ".[docs]"
 
       - name: Build site
         run: mkdocs build --strict

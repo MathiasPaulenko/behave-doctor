@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from behave_doctor.model.diagnostic import Diagnostic
-from behave_doctor.model.enums import Severity
+from behave_doctor.model.enums import SEVERITY_ORDER, Severity
 from behave_doctor.model.project_report import ProjectReport
 
 # ANSI color codes.
@@ -17,13 +17,6 @@ _SEVERITY_COLOR: dict[Severity, str] = {
     Severity.WARNING: _YELLOW,
     Severity.INFO: _CYAN,
     Severity.HINT: _CYAN,
-}
-
-_SEVERITY_ORDER: dict[Severity, int] = {
-    Severity.ERROR: 0,
-    Severity.WARNING: 1,
-    Severity.INFO: 2,
-    Severity.HINT: 3,
 }
 
 _SEVERITY_LABEL: dict[Severity, str] = {
@@ -60,7 +53,7 @@ class TextReporter:
         )
 
         diagnostics = self._filter(report.diagnostics)
-        diagnostics = sorted(diagnostics, key=lambda d: (_SEVERITY_ORDER[d.severity], d.rule_id))
+        diagnostics = sorted(diagnostics, key=lambda d: (SEVERITY_ORDER[d.severity], d.rule_id))
 
         if diagnostics:
             lines.append("")
@@ -69,7 +62,9 @@ class TextReporter:
 
         lines.append("")
         seconds = report.scan_duration_ms / 1000.0
-        lines.append(f"{len(report.errors)} errors, {len(report.warnings)} warnings in {seconds}s")
+        error_count = sum(1 for d in diagnostics if d.severity is Severity.ERROR)
+        warning_count = sum(1 for d in diagnostics if d.severity is Severity.WARNING)
+        lines.append(f"{error_count} errors, {warning_count} warnings in {seconds}s")
         return "\n".join(lines)
 
     def _filter(self, diagnostics: list[Diagnostic]) -> list[Diagnostic]:

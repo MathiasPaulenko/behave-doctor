@@ -102,7 +102,7 @@ def step_impl(context, name, email, phone, address, city, zip):
 ### Example output
 
 ```text
-BD402  WARNING  Step pattern has 6 parameters (max 5)
+BD402  WARNING  Step definition "the user fills the form with {name} and {email} and {phone} and {address} and {city} and {zip}" has 6 parameters (max 5)
         (features/steps/forms.py:15)
 ```
 
@@ -151,7 +151,7 @@ max_lines = 200  # default: 300
 ### Example output
 
 ```text
-BD403  WARNING  Feature file has 342 lines (max 300)
+BD403  WARNING  Feature file "checkout.feature" has 342 lines (max 300)
         (features/checkout.feature)
 ```
 

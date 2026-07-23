@@ -6,7 +6,7 @@
 [![Docs](https://github.com/MathiasPaulenko/behave-doctor/actions/workflows/docs.yml/badge.svg)](https://mathiaspaulenko.github.io/behave-doctor/)
 [![PyPI](https://img.shields.io/pypi/v/behave-doctor)](https://pypi.org/project/behave-doctor/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/MathiasPaulenko/behave-doctor)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/MathiasPaulenko/behave-doctor)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000)](https://docs.astral.sh/ruff/)
 [![Types: mypy](https://img.shields.io/badge/types-mypy%20strict-blue)](https://mypy-lang.org/)
@@ -59,7 +59,7 @@ step definitions with the AST — never importing or executing them.
   integrations.
 - **CLI** with `scan`, `list-rules`, `explain`, `stats`, and `graph`
   subcommands.
-- **94% test coverage** — 129 tests across unit and integration suites.
+- **95% test coverage** — 192 tests across unit and integration suites.
 
 ## Installation
 
@@ -67,7 +67,8 @@ step definitions with the AST — never importing or executing them.
 pip install behave-doctor
 ```
 
-Requires Python 3.11+. The `behave-model` package is installed automatically.
+**Requirements**: Python 3.11+. The `behave-model` package (for `.feature`
+parsing) and `typer` (for the CLI) are installed automatically.
 
 ## Quick start
 
@@ -79,10 +80,14 @@ behave-doctor scan .
 Scanning . ...
 Found 12 features, 47 scenarios, 213 steps, 89 step definitions.
 
+BD101  INFO      12 features found
+BD102  INFO      47 scenarios found
+BD103  INFO      213 steps found
+BD201  ERROR     Duplicate step definition for pattern 'the user is logged in' in: ...
 BD301  WARNING   Unused step definition: "the user clicks submit"  (features/steps/auth.py:42)
-BD302  ERROR      Undefined step: "Given the database is seeded"   (features/login.feature:18)
+BD302  ERROR     Undefined step: "Given the database is seeded"  (features/login.feature:18)
 
-1 errors, 1 warnings in 0.42s
+3 errors, 1 warning in 0.42s
 ```
 
 Exit codes: `0` = clean, `1` = issues found, `2` = scan error.
@@ -124,9 +129,9 @@ All options have sensible defaults — configuration is optional.
 ```toml
 # pyproject.toml
 [tool.behave-doctor]
-features_dir = "features"           # default: features
-steps_dir = "features/steps"        # default: features/steps
-min_severity = "hint"               # default: hint (show everything)
+features_dir = "features/"          # default: features/
+steps_dir = "features/steps/"       # default: features/steps/
+min_severity = "info"               # default: info (show errors, warnings, and info)
 exclude_tags = ["@smoke", "@wip"]   # tags excluded from BD303
 
 [tool.behave-doctor.rules.BD101]    # disable a rule
@@ -181,19 +186,19 @@ stats = report.statistics
 print(f"{stats.features} features, {stats.scenarios} scenarios")
 print(f"{stats.unused_step_definitions} unused, {stats.undefined_steps} undefined")
 
-# Exit code: 0 = clean, 1 = issues, 2 = scan error
+# Exit code: 0 = clean, 1 = issues found
 print(f"Exit code: {report.exit_code}")
 ```
 
 Custom configuration:
 
 ```python
-from behave_doctor import scan_project, DoctorConfig
+from behave_doctor import scan_project, DoctorConfig, Severity
 
 config = DoctorConfig(
     features_dir="my_features",
     steps_dir="my_steps",
-    min_severity="warning",
+    min_severity=Severity.WARNING,
     rules={"BD101": {"enabled": False}, "BD401": {"max_steps": 5}},
 )
 report = scan_project("path/to/project", config=config)
@@ -271,13 +276,17 @@ pre-commit install
 
 | Command             | Description                                  |
 | ------------------- | -------------------------------------------- |
+| `make help`         | Show all available targets.                  |
+| `make dev`          | Install with dev extras.                     |
 | `make lint`         | Run `ruff check` + `mypy --strict`.          |
 | `make lint-fix`     | Auto-fix lint issues.                        |
 | `make format`       | Format the code with `ruff format`.          |
 | `make format-check` | Verify formatting without changes.           |
 | `make test`         | Run the test suite.                          |
 | `make test-cov`     | Run tests with coverage (fail under 90%).    |
+| `make check`        | Full pre-commit check (lint + format + test).|
 | `make build`        | Build sdist + wheel into `dist/`.            |
+| `make docs-serve`   | Serve documentation locally.                 |
 | `make clean`        | Remove build artifacts and caches.           |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
@@ -285,3 +294,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 ## License
 
 [MIT](LICENSE) — © Mathias Paulenko
+
+## Acknowledgements
+
+- [`behave-model`](https://pypi.org/project/behave-model/) — the `.feature` file
+  parser that powers behave-doctor's analysis.
+- [`typer`](https://typer.tiangolo.com/) — the CLI framework that makes
+  behave-doctor's command-line interface clean and ergonomic.
+- [`ruff`](https://docs.astral.sh/ruff/) and
+  [`mypy`](https://mypy-lang.org/) — the tools that keep behave-doctor's
+  codebase clean and fully typed.

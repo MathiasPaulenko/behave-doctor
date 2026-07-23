@@ -26,18 +26,17 @@ behave-doctor will:
 Scanning . ...
 Found 12 features, 47 scenarios, 213 steps, 89 step definitions.
 
-BD101  INFO      12 features
-BD102  INFO      47 scenarios
-BD103  INFO      213 steps
+BD101  INFO      12 features found
+BD102  INFO      47 scenarios found
+BD103  INFO      213 steps found
 BD104  INFO      8 unique tags, 34 total tag usages
-BD201  ERROR     Duplicate step definition: "the user is logged in"
-      (features/steps/auth.py:10 vs features/steps/login.py:15)
+BD201  ERROR     Duplicate step definition for pattern 'the user is logged in' in: features/steps/auth.py:10, features/steps/login.py:15
 BD301  WARNING   Unused step definition: "the user clicks submit"
       (features/steps/auth.py:42)
 BD302  ERROR     Undefined step: "Given the database is seeded"
       (features/login.feature:18)
 
-3 errors, 1 warnings in 0.42s
+3 errors, 1 warning in 0.42s
 ```
 
 ### Exit codes
@@ -91,7 +90,7 @@ behave-doctor scan . --severity info
 ```
 
 Severity hierarchy: `error` > `warning` > `info` > `hint`. The default is
-`hint` (show everything).
+`info` (show errors, warnings, and info).
 
 ## Explore rules
 
@@ -102,11 +101,10 @@ behave-doctor list-rules
 ```
 
 ```text
-ID     SEVERITY  CATEGORY     NAME                          DESCRIPTION
-BD101  INFO      structure    feature-count                 Report total feature count.
-BD102  INFO      structure    scenario-count                Report total scenario count.
+BD101  INFO      structure     feature-count  -  Report total feature count.
+BD102  INFO      structure     scenario-count  -  Report total scenario count.
 ...
-BD503  ERROR     dependency   missing-step-module           Feature references steps from non-existent module.
+BD503  ERROR     dependency   missing-step-module  -  Feature references steps from non-existent module.
 ```
 
 ### Explain a specific rule
@@ -116,18 +114,11 @@ behave-doctor explain BD301
 ```
 
 ```text
-BD301 — unused-step-def
-
-  Severity:  warning
-  Category:  coverage
-  Config:    none
-
-  Description:
-    Step definition never matched by any feature step.
-
-  Suggestion:
-    Remove the unused step definition or add a feature step
-    that exercises it.
+ID:          BD301
+Name:        unused-step-def
+Severity:    warning
+Category:    coverage
+Description: Step definition never matched by any feature step.
 ```
 
 ## Statistics
@@ -192,7 +183,7 @@ print(f"{stats.features} features, {stats.scenarios} scenarios")
 print(f"{stats.unused_step_definitions} unused step definitions")
 print(f"{stats.undefined_steps} undefined steps")
 
-# Exit code: 0 = clean, 1 = issues, 2 = scan error
+# Exit code: 0 = clean, 1 = issues found
 print(f"Exit code: {report.exit_code}")
 ```
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from behave_doctor import __version__
+from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Severity
 from behave_doctor.model.project_report import ProjectReport
 from behave_doctor.rules import get_all_rules
@@ -64,7 +65,7 @@ class SarifReporter:
         return rules
 
     @staticmethod
-    def _build_result(diag: Any, project_path: Path) -> dict[str, Any]:
+    def _build_result(diag: Diagnostic, project_path: Path) -> dict[str, Any]:
         uri: str | None = None
         if isinstance(diag.file, Path):
             try:

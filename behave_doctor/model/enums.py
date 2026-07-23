@@ -22,3 +22,13 @@ class Category(Enum):
     COVERAGE = "coverage"
     COMPLEXITY = "complexity"
     DEPENDENCY = "dependency"
+
+
+SEVERITY_ORDER: dict[Severity, int] = {
+    Severity.ERROR: 0,
+    Severity.WARNING: 1,
+    Severity.INFO: 2,
+    Severity.HINT: 3,
+}
+"""Numeric ordering of severities, lowest = most severe. Used for filtering
+and sorting diagnostics across reporters and the core engine."""

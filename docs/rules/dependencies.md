@@ -31,8 +31,7 @@ from features.steps.a import helper_a  # b imports a — CIRCULAR!
 ### Example output
 
 ```text
-BD501  ERROR  Circular dependency detected: a.py -> b.py -> a.py
-       (features/steps/a.py)
+BD501  ERROR  Circular dependency: a.py -> b.py -> a.py
 ```
 
 ### How to fix
@@ -93,9 +92,9 @@ def step_impl(context):
 ### Example output
 
 ```text
-BD502  WARNING  Unused import: "json"
+BD502  WARNING  Unused import "json" in auth.py
        (features/steps/auth.py:1)
-BD502  WARNING  Unused import: "Path"
+BD502  WARNING  Unused import "Path" in auth.py
        (features/steps/auth.py:2)
 ```
 
@@ -142,8 +141,7 @@ or a fresh checkout where step definitions haven't been written yet.
 ### Example output
 
 ```text
-BD503  ERROR  No step definitions found in features/steps/
-       Expected @given/@when/@then decorators in .py files.
+BD503  ERROR  16 undefined step(s) and no step definitions found — the steps directory is empty or missing
 ```
 
 ### How to fix

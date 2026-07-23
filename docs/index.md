@@ -52,7 +52,7 @@ step definitions with the AST — never importing or executing them.
   integrations.
 - **CLI** with `scan`, `list-rules`, `explain`, `stats`, and `graph`
   subcommands.
-- **94% test coverage** — 129 tests across unit and integration suites.
+- **95% test coverage** — 192 tests across unit and integration suites.
 
 ## Quick example
 
@@ -64,10 +64,14 @@ behave-doctor scan path/to/project --format text
 Scanning path/to/project...
 Found 12 features, 47 scenarios, 213 steps, 89 step definitions.
 
+BD101  INFO      12 features found
+BD102  INFO      47 scenarios found
+BD103  INFO      213 steps found
+BD201  ERROR     Duplicate step definition for pattern 'the user is logged in' in: ...
 BD301  WARNING   Unused step definition: "the user clicks submit"  (features/steps/auth.py:42)
-BD302  ERROR      Undefined step: "Given the database is seeded"   (features/login.feature:18)
+BD302  ERROR     Undefined step: "Given the database is seeded"  (features/login.feature:18)
 
-1 errors, 1 warnings in 0.42s
+3 errors, 1 warning in 0.42s
 ```
 
 Exit codes: `0` = clean, `1` = issues found, `2` = scan error.

@@ -9,15 +9,21 @@ from pathlib import Path
 from behave_model import Project
 
 from behave_doctor.graph.builder import build_graph
+from behave_doctor.model import (
+    all_project_tags,
+    project_scenario_count,
+    project_step_count,
+    tag_name,
+)
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.diagnostic import Diagnostic
-from behave_doctor.model.enums import Severity
+from behave_doctor.model.enums import SEVERITY_ORDER, Severity
 from behave_doctor.model.project_report import ProjectReport, ProjectStatistics
 from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.rules import get_all_rules
 from behave_doctor.rules.base import RuleContext, run_rules
-from behave_doctor.scanner.project_scanner import scan_features
+from behave_doctor.scanner.project_scanner import ScanError, scan_features
 from behave_doctor.scanner.step_scanner import scan_steps
 
 
@@ -27,18 +33,22 @@ def build_statistics(
     graph: DependencyGraph,
 ) -> ProjectStatistics:
     """Build ``ProjectStatistics`` from a project, step defs and dependency graph."""
-    stats = project.statistics()
     used_ids = set(graph.step_usage.keys())
     unused = sum(1 for d in step_definitions if d.def_id not in used_ids)
     undefined = sum(1 for m in graph.step_matches if m.step_definition is None)
+    tags = all_project_tags(project)
+    unique_tags = {tag_name(t) for t in tags}
+    scenarios = project_scenario_count(project)
+    steps = project_step_count(project)
+    average = steps / scenarios if scenarios else 0.0
     return ProjectStatistics(
-        features=stats.get("features", 0),
-        scenarios=stats.get("scenarios", 0),
-        steps=stats.get("steps", 0),
+        features=len(project.features),
+        scenarios=scenarios,
+        steps=steps,
         step_definitions=len(step_definitions),
-        tags=stats.get("tags", 0),
-        total_tag_usages=stats.get("total_tag_usages", 0),
-        average_steps_per_scenario=float(stats.get("average_steps_per_scenario", 0.0)),
+        tags=len(unique_tags),
+        total_tag_usages=len(tags),
+        average_steps_per_scenario=average,
         unused_step_definitions=unused,
         undefined_steps=undefined,
     )
@@ -65,6 +75,8 @@ def build_report(
     Returns:
         A ``ProjectReport``. Raises ``ScanError`` if the project cannot be scanned.
     """
+    if not project_path.is_dir():
+        raise ScanError(f"Project path is not a directory: {project_path}")
     start = time.perf_counter()
     project = scan_features(project_path, config)
     step_definitions = scan_steps((project_path / config.steps_dir).resolve(), config)
@@ -99,11 +111,5 @@ def _filter_by_severity(
     min_severity: Severity,
 ) -> list[Diagnostic]:
     """Return only diagnostics with severity at or above ``min_severity``."""
-    order = {
-        Severity.ERROR: 0,
-        Severity.WARNING: 1,
-        Severity.INFO: 2,
-        Severity.HINT: 3,
-    }
-    threshold = order[min_severity]
-    return [d for d in diagnostics if order[d.severity] <= threshold]
+    threshold = SEVERITY_ORDER[min_severity]
+    return [d for d in diagnostics if SEVERITY_ORDER[d.severity] <= threshold]

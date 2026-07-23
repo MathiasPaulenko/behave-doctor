@@ -36,14 +36,14 @@ behave-doctor scan [PATH] [OPTIONS]
 
 | Option                 | Default            | Description                                              |
 | ---------------------- | ------------------ | -------------------------------------------------------- |
-| `--features-dir DIR`   | `features`         | Relative path to the features directory.                 |
-| `--steps-dir DIR`      | `features/steps`   | Relative path to the step definitions directory.         |
+| `--features-dir DIR`   | `features/`        | Relative path to the features directory.                 |
+| `--steps-dir DIR`      | `features/steps/`  | Relative path to the step definitions directory.         |
 | `--config FILE`        | auto-detected      | Path to a `pyproject.toml` config file.                  |
 | `--format FORMAT`      | `text`             | Output format: `text`, `json`, or `sarif`.               |
 | `-o`, `--output FILE`  | stdout             | Write report to a file instead of stdout.                |
 | `--rules IDS`          | all enabled        | Comma-separated rule IDs to run (overrides config).      |
 | `--exclude-rules IDS`  | none               | Comma-separated rule IDs to skip.                        |
-| `--severity LEVEL`     | `hint`             | Minimum severity: `error`, `warning`, `info`, `hint`.    |
+| `--severity LEVEL`     | `info`             | Minimum severity: `error`, `warning`, `info`, `hint`.    |
 | `--no-color`           | off                | Disable ANSI color codes (text format only).             |
 | `-q`, `--quiet`        | off                | Only show errors (text format only).                     |
 | `-v`, `--verbose`      | off                | Show suggestions and metadata per issue (text only).     |
@@ -100,25 +100,24 @@ behave-doctor list-rules
 ```
 
 ```text
-ID     SEVERITY  CATEGORY     NAME                          DESCRIPTION
-BD101  INFO      structure    feature-count                 Report total feature count.
-BD102  INFO      structure    scenario-count                Report total scenario count.
-BD103  INFO      structure    step-count                    Report total step count.
-BD104  INFO      structure    tag-coverage                  Report tag usage distribution.
-BD201  ERROR     quality      duplicate-step-defs           Same pattern registered multiple times.
-BD202  WARNING   quality      scenario-no-tags              Scenario has no tags.
-BD203  WARNING   quality      feature-too-many-scenarios    Feature has > N scenarios (default 20).
-BD204  WARNING   quality      inconsistent-tag-casing       Tags with inconsistent casing.
-BD301  WARNING   coverage     unused-step-def               Step definition never matched.
-BD302  ERROR     coverage     undefined-step                Step in feature has no matching definition.
-BD303  INFO      coverage     unused-tag                    Tag defined but never used in CI filters.
-BD304  WARNING   coverage     orphan-scenario               Scenario never selected by any tag filter.
-BD401  WARNING   complexity   scenario-too-many-steps       Scenario has > N steps (default 10).
-BD402  WARNING   complexity   step-too-many-params          Step pattern has > N parameters (default 5).
-BD403  WARNING   complexity   feature-too-large             Feature file > N lines (default 300).
-BD501  ERROR     dependency   circular-dependency           Circular import dependency between step modules.
-BD502  WARNING   dependency   unused-import                 Import in step module not used.
-BD503  ERROR     dependency   missing-step-module           Feature references steps from non-existent module.
+BD101  INFO      structure     feature-count  -  Report total feature count.
+BD102  INFO      structure     scenario-count  -  Report total scenario count.
+BD103  INFO      structure     step-count  -  Report total step count.
+BD104  INFO      structure     tag-coverage  -  Report tag usage distribution.
+BD201  ERROR     quality       duplicate-step-defs  -  Same pattern registered multiple times.
+BD202  WARNING   quality       scenario-no-tags  -  Scenario has no tags.
+BD203  WARNING   quality       feature-too-many-scenarios  -  Feature has more than N scenarios (default 20).
+BD204  WARNING   quality       inconsistent-tag-casing  -  Tags with inconsistent casing (e.g. @SmokeTest vs @smoke_test).
+BD301  WARNING   coverage     unused-step-def  -  Step definition never matched by any feature step.
+BD302  ERROR     coverage     undefined-step  -  Step in feature has no matching definition.
+BD303  INFO      coverage     unused-tag  -  Tag defined but never used in CI filters.
+BD304  WARNING   coverage     orphan-scenario  -  Scenario never selected by any tag filter (all tags unique).
+BD401  WARNING   complexity   scenario-too-many-steps  -  Scenario has more than N steps (default 10).
+BD402  WARNING   complexity   step-too-many-params  -  Step pattern has more than N parameters (default 5).
+BD403  WARNING   complexity   feature-too-large  -  Feature file has more than N lines (default 300).
+BD501  ERROR     dependency   circular-dependency  -  Circular import dependency between step modules.
+BD502  WARNING   dependency   unused-import  -  Import in step module not used.
+BD503  ERROR     dependency   missing-step-module  -  Feature references steps from a non-existent or empty module.
 ```
 
 ## `explain`
@@ -131,18 +130,11 @@ behave-doctor explain BD301
 ```
 
 ```text
-BD301 — unused-step-def
-
-  Severity:  warning
-  Category:  coverage
-  Config:    none
-
-  Description:
-    Step definition never matched by any feature step.
-
-  Suggestion:
-    Remove the unused step definition or add a feature step
-    that exercises it.
+ID:          BD301
+Name:        unused-step-def
+Severity:    warning
+Category:    coverage
+Description: Step definition never matched by any feature step.
 ```
 
 ## `stats`

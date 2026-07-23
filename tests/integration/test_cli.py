@@ -39,6 +39,13 @@ def test_scan_json_format() -> None:
     assert "statistics" in data
 
 
+def test_scan_format_is_case_insensitive() -> None:
+    """--format should accept JSON, Json, SARIF, etc."""
+    code, out, _ = _run(["scan", str(SAMPLE_PROJECT), "--format", "JSON"])
+    data = json.loads(out)
+    assert "diagnostics" in data
+
+
 def test_scan_sarif_format() -> None:
     code, out, _ = _run(["scan", str(SAMPLE_PROJECT), "--format", "sarif"])
     data = json.loads(out)
@@ -66,6 +73,25 @@ def test_scan_exclude_rules() -> None:
 def test_scan_severity_filter() -> None:
     code, out, _ = _run(["scan", str(SAMPLE_PROJECT), "--no-color", "--severity", "error"])
     assert "BD101" not in out
+
+
+def test_scan_severity_filter_is_case_insensitive() -> None:
+    code, out, _ = _run(["scan", str(SAMPLE_PROJECT), "--no-color", "--severity", "ERROR"])
+    assert "BD101" not in out
+
+
+def test_scan_severity_filter_rejects_invalid_value() -> None:
+    code, _, err = _run(["scan", str(SAMPLE_PROJECT), "--severity", "foo"])
+    assert code == 2
+    assert "invalid severity" in (err).lower()
+
+
+def test_scan_rejects_file_path(tmp_path: Path) -> None:
+    file = tmp_path / "not_a_dir.feature"
+    file.write_text("Feature: X\n", encoding="utf-8")
+    code, _, err = _run(["scan", str(file)])
+    assert code == 2
+    assert "not a directory" in (err).lower()
 
 
 def test_list_rules() -> None:
@@ -115,7 +141,7 @@ def test_scan_default_path_is_cwd(
 def test_version_flag() -> None:
     code, out, _ = _run(["--version"])
     assert code == 0
-    assert "1.1.0" in out
+    assert "1.2.0" in out
 
 
 def test_main_returns_exit_code() -> None:

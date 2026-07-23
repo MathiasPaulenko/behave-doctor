@@ -21,7 +21,7 @@ at all but has `.feature` files).
 
 ### What Python versions are supported?
 
-Python 3.11, 3.12, and 3.13. The CI pipeline tests all three versions on
+Python 3.11, 3.12, 3.13, and 3.14. The CI pipeline tests all four versions on
 Ubuntu, macOS, and Windows.
 
 ### Is behave-doctor fast?

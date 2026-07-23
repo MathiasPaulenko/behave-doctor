@@ -86,9 +86,12 @@ def test_bd503_no_step_definitions_reports_missing_directory() -> None:
     assert "no step definitions" in diagnostics[0].message
 
 
-def test_bd503_with_some_definitions_reports_undefined_steps() -> None:
+def test_bd503_with_some_definitions_does_not_duplicate_bd302() -> None:
+    """When step definitions exist, BD503 must not report undefined steps.
+
+    BD302 already reports undefined steps when definitions exist. BD503 only
+    fires when there are zero step definitions (the "missing module" case).
+    """
     ctx = _ctx("undefined_steps_project")
     diagnostics = MissingStepModule().check(ctx)
-    assert len(diagnostics) >= 1
-    assert all(d.rule_id == "BD503" for d in diagnostics)
-    assert all(d.severity is Severity.ERROR for d in diagnostics)
+    assert diagnostics == []

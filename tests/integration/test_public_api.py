@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import behave_doctor
 from behave_doctor import DoctorConfig, ProjectReport, scan_project
+from behave_doctor.scanner import ScanError
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -45,3 +48,10 @@ def test_report_attributes_accessible() -> None:
     assert report.diagnostics is not None
     assert report.statistics is not None
     assert isinstance(report.exit_code, int)
+
+
+def test_scan_project_rejects_file_path(tmp_path: Path) -> None:
+    file = tmp_path / "feature.feature"
+    file.write_text("Feature: X\n", encoding="utf-8")
+    with pytest.raises(ScanError, match="not a directory"):
+        scan_project(file)

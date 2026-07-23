@@ -70,12 +70,11 @@ def test_parameters_extracted(tmp_path: Path) -> None:
 
 
 def test_malformed_file_skipped_with_warning(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     defs = _scan_fixture("steps_malformed.py", tmp_path)
     assert defs == []
-    captured = capsys.readouterr()
-    assert "could not parse" in captured.err
+    assert "Could not parse" in caplog.text
 
 
 def test_empty_dir_returns_empty_list(tmp_path: Path) -> None:
@@ -84,3 +83,98 @@ def test_empty_dir_returns_empty_list(tmp_path: Path) -> None:
 
 def test_nonexistent_dir_returns_empty_list(tmp_path: Path) -> None:
     assert scan_steps(tmp_path / "missing", DoctorConfig()) == []
+
+
+def test_nested_functions_are_not_step_defs(tmp_path: Path) -> None:
+    """Nested functions and class methods must not be picked up as step definitions."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "nested.py").write_text(
+        "from behave import given\n"
+        "\n"
+        '@given("outer step")\n'
+        "def outer():\n"
+        '    @given("nested step")\n'
+        "    def inner():\n"
+        "        pass\n"
+        "\n"
+        "class Steps:\n"
+        '    @given("method step")\n'
+        "    def method(self):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert len(defs) == 1
+    assert defs[0].pattern == "outer step"
+
+
+def test_dotted_import_behave_detected(tmp_path: Path) -> None:
+    """'import behave.given' still lets @behave.given decorators be discovered."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "dotted.py").write_text(
+        "import behave.given\n"
+        "\n"
+        '@behave.given("a dotted import step")\n'
+        "def step_impl():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert len(defs) == 1
+    assert defs[0].pattern == "a dotted import step"
+
+
+def test_pattern_keyword_argument_detected(tmp_path: Path) -> None:
+    """Step decorators with pattern='...' keyword argument must be discovered."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "kwarg.py").write_text(
+        "from behave import given, when, then\n"
+        "\n"
+        '@given(pattern="a keyword pattern")\n'
+        "def step_given():\n"
+        "    pass\n"
+        "\n"
+        '@when(pattern="an action occurs")\n'
+        "def step_when():\n"
+        "    pass\n"
+        "\n"
+        '@then(pattern="the result is visible")\n'
+        "def step_then():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    patterns = {d.pattern for d in defs}
+    assert "a keyword pattern" in patterns
+    assert "an action occurs" in patterns
+    assert "the result is visible" in patterns
+    assert {d.keyword for d in defs} == {"given", "when", "then"}
+
+
+def test_typed_parse_placeholder_detected(tmp_path: Path) -> None:
+    """Parse/cfparse patterns with {name:type} placeholders must be compiled
+    and their parameters extracted."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "typed.py").write_text(
+        "from behave import given, when\n"
+        "\n"
+        '@given("I have {n:d} items", converter=lambda x: int(x))\n'
+        "def step_count(n):\n"
+        "    pass\n"
+        "\n"
+        '@when("user {name} logs in")\n'
+        "def step_user(name):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    by_pattern = {d.pattern: d for d in defs}
+    assert "I have {n:d} items" in by_pattern
+    assert "n" in by_pattern["I have {n:d} items"].parameters
+    assert by_pattern["I have {n:d} items"].matcher_type == "cfparse"
+    assert "name" in by_pattern["user {name} logs in"].parameters
+    assert by_pattern["user {name} logs in"].pattern_compiled.fullmatch("user Alice logs in")

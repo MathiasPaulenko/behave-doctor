@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
-
 from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
+from behave_doctor.model.location import location_line, location_path
 from behave_doctor.rules import register
-from behave_doctor.rules.base import Rule, RuleContext
+from behave_doctor.rules.base import Rule, RuleContext, _get_int_override
 
 
 @register
@@ -23,7 +21,7 @@ class ScenarioTooManySteps(Rule):
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         overrides = context.config.rules.get(self.id, {})
-        max_steps = int(overrides.get("max_steps", 10))
+        max_steps = _get_int_override(overrides, "max_steps", 10)
 
         diagnostics: list[Diagnostic] = []
         for scenario in context.project.all_scenarios():
@@ -37,8 +35,8 @@ class ScenarioTooManySteps(Rule):
                         severity=self.severity,
                         category=self.category,
                         message=(f'Scenario "{scenario.name}" has {count} steps (max {max_steps})'),
-                        file=_location_path(location),
-                        line=location.line or None,
+                        file=location_path(location),
+                        line=location_line(location),
                         metadata={
                             "scenario": scenario.name,
                             "count": count,
@@ -61,7 +59,7 @@ class StepTooManyParams(Rule):
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         overrides = context.config.rules.get(self.id, {})
-        max_params = int(overrides.get("max_params", 5))
+        max_params = _get_int_override(overrides, "max_params", 5)
 
         diagnostics: list[Diagnostic] = []
         for definition in context.step_definitions:
@@ -101,15 +99,19 @@ class FeatureTooLarge(Rule):
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         overrides = context.config.rules.get(self.id, {})
-        max_lines = int(overrides.get("max_lines", 300))
+        max_lines = _get_int_override(overrides, "max_lines", 300)
 
         diagnostics: list[Diagnostic] = []
         for feature in context.project.features:
             location = feature.location
-            file = _location_path(location)
+            file = location_path(location)
             if file is None or not file.exists():
                 continue
-            line_count = sum(1 for _ in file.read_text(encoding="utf-8").splitlines())
+            try:
+                with file.open(encoding="utf-8-sig") as handle:
+                    line_count = sum(1 for _ in handle)
+            except (OSError, UnicodeError):
+                continue
             if line_count > max_lines:
                 diagnostics.append(
                     Diagnostic(
@@ -121,7 +123,7 @@ class FeatureTooLarge(Rule):
                             f'Feature file "{file.name}" has {line_count} lines (max {max_lines})'
                         ),
                         file=file,
-                        line=location.line or None,
+                        line=location_line(location),
                         metadata={
                             "feature": feature.name,
                             "line_count": line_count,
@@ -130,9 +132,3 @@ class FeatureTooLarge(Rule):
                     )
                 )
         return diagnostics
-
-
-def _location_path(location: Any) -> Path | None:
-    """Return a Path for a behave-model location, or ``None``."""
-    filename = getattr(location, "filename", "") or ""
-    return Path(filename) if filename else None

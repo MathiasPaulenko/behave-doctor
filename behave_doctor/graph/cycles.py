@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections import deque
+
 
 def detect_cycles(module_imports: dict[str, set[str]]) -> list[list[str]]:
-    """Find all cycles in a directed module import graph using DFS.
+    """Find all cycles in a directed module import graph using iterative DFS.
 
     Args:
         module_imports: Mapping of module name → set of imported module names.
@@ -23,37 +25,59 @@ def detect_cycles(module_imports: dict[str, set[str]]) -> list[list[str]]:
         nodes.update(targets)
 
     visited: set[str] = set()
-    stack: list[str] = []
     on_stack: set[str] = set()
 
-    def _dfs(node: str) -> None:
-        stack.append(node)
-        on_stack.add(node)
-        for neighbour in sorted(module_imports.get(node, set())):
-            if neighbour == node:
-                _record([node, node])
-                continue
-            if neighbour in on_stack:
-                # Found a cycle: slice the stack from the neighbour to current.
-                idx = stack.index(neighbour)
-                _record(stack[idx:] + [neighbour])
-            elif neighbour not in visited and neighbour in module_imports:
-                _dfs(neighbour)
-        on_stack.discard(node)
-        stack.pop()
-        visited.add(node)
-
     def _record(cycle: list[str]) -> None:
-        # Normalize the cycle to a canonical rotation for deduplication.
         key = _canonical_cycle_key(cycle)
         if key in seen_cycle_keys:
             return
         seen_cycle_keys.add(key)
         cycles.append(cycle)
 
-    for node in sorted(nodes):
-        if node not in visited:
-            _dfs(node)
+    for start in sorted(nodes):
+        if start in visited:
+            continue
+        # Iterative DFS with an explicit stack of (node, iterator) pairs.
+        stack: list[str] = []
+        iters: list[deque[str]] = []
+        current: str | None = start
+        neighbours: deque[str] = deque(sorted(module_imports.get(start, set())))
+
+        while True:
+            if current is not None:
+                stack.append(current)
+                on_stack.add(current)
+                iters.append(neighbours)
+                current = None
+
+            # Try to advance the top iterator.
+            advanced = False
+            while iters:
+                top_iter = iters[-1]
+                if not top_iter:
+                    # Backtrack: pop this node.
+                    done = stack.pop()
+                    on_stack.discard(done)
+                    iters.pop()
+                    visited.add(done)
+                    continue
+                neighbour = top_iter.popleft()
+                if neighbour == stack[-1]:
+                    _record([stack[-1], stack[-1]])
+                    continue
+                if neighbour in on_stack:
+                    idx = stack.index(neighbour)
+                    _record(stack[idx:] + [neighbour])
+                    continue
+                if neighbour not in visited and neighbour in module_imports:
+                    current = neighbour
+                    neighbours = deque(sorted(module_imports.get(neighbour, set())))
+                    advanced = True
+                    break
+                # Skip: already visited or not in graph.
+
+            if not advanced:
+                break
 
     return cycles
 

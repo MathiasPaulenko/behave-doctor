@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from pathlib import Path
 from typing import Any
 
+from behave_doctor.model import all_project_tags, scenario_tag_sets, tag_name
 from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
+from behave_doctor.model.location import location_line, location_path
 from behave_doctor.rules import register
 from behave_doctor.rules.base import Rule, RuleContext
 
@@ -67,8 +68,8 @@ class UndefinedStep(Rule):
                     severity=self.severity,
                     category=self.category,
                     message=f'Undefined step: "{step.full_text}"',
-                    file=_location_path(location),
-                    line=location.line or None,
+                    file=location_path(location),
+                    line=location_line(location),
                     metadata={"step": step.name},
                 )
             )
@@ -89,8 +90,8 @@ class UnusedTag(Rule):
         excluded = {t.lstrip("@") for t in context.config.exclude_tags}
         excluded_normalized = {t.lower() for t in excluded}
         counts: Counter[str] = Counter()
-        for tag in context.project.all_tags():
-            counts[tag.name] += 1
+        for tag in all_project_tags(context.project):
+            counts[tag_name(tag)] += 1
 
         diagnostics: list[Diagnostic] = []
         for name, count in counts.items():
@@ -121,17 +122,34 @@ class OrphanScenario(Rule):
     description = "Scenario never selected by any tag filter (all tags unique)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        # Count how many scenarios use each tag.
+        # Build effective tag sets for each generated scenario. Feature-level tags are
+        # inherited by every generated scenario in Behave tag filters. Scenario Outlines
+        # are expanded into one entry per example row so tag usage is counted correctly.
+        entries: list[tuple[Any, list[set[str]]]] = []
+        for feature in context.project.features:
+            featuretag_names = {tag_name(t) for t in feature.tags}
+            for scenario in feature.all_scenarios():
+                tag_sets = [
+                    {tag_name(t) for t in tag_set} | featuretag_names
+                    for tag_set in scenario_tag_sets(scenario)
+                ]
+                entries.append((scenario, tag_sets))
+
+        # Count how many generated scenarios use each tag.
         tag_to_scenarios: Counter[str] = Counter()
-        for scenario in context.project.all_scenarios():
-            for tag in scenario.tags:
-                tag_to_scenarios[tag.name] += 1
+        for _, tag_sets in entries:
+            for names in tag_sets:
+                for name in names:
+                    tag_to_scenarios[name] += 1
 
         diagnostics: list[Diagnostic] = []
-        for scenario in context.project.all_scenarios():
-            if not scenario.tags:
+        for scenario, tag_sets in entries:
+            all_names: set[str] = set()
+            for names in tag_sets:
+                all_names.update(names)
+            if not all_names:
                 continue
-            if all(tag_to_scenarios[tag.name] <= 1 for tag in scenario.tags):
+            if all(tag_to_scenarios[name] <= 1 for name in all_names):
                 location = scenario.location
                 diagnostics.append(
                     Diagnostic(
@@ -140,18 +158,11 @@ class OrphanScenario(Rule):
                         severity=self.severity,
                         category=self.category,
                         message=(
-                            f'Scenario "{scenario.name}" has only unique tags '
-                            f"{[t.name for t in scenario.tags]}"
+                            f'Scenario "{scenario.name}" has only unique tags {sorted(all_names)}'
                         ),
-                        file=_location_path(location),
-                        line=location.line or None,
-                        metadata={"scenario": scenario.name},
+                        file=location_path(location),
+                        line=location_line(location),
+                        metadata={"scenario": scenario.name, "tags": sorted(all_names)},
                     )
                 )
         return diagnostics
-
-
-def _location_path(location: Any) -> Path | None:
-    """Return a Path for a behave-model location, or ``None``."""
-    filename = getattr(location, "filename", "") or ""
-    return Path(filename) if filename else None

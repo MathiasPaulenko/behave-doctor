@@ -41,11 +41,18 @@ def _load_config(
     steps_dir: str | None,
     project_path: Path,
 ) -> DoctorConfig:
-    if config_path:
-        config = DoctorConfig.from_pyproject(Path(config_path))
-    else:
-        pyproject = project_path / "pyproject.toml"
-        config = DoctorConfig.from_pyproject(pyproject) if pyproject.exists() else DoctorConfig()
+    try:
+        if config_path:
+            config = DoctorConfig.from_pyproject(Path(config_path))
+        else:
+            pyproject = project_path / "pyproject.toml"
+            if pyproject.exists():
+                config = DoctorConfig.from_pyproject(pyproject)
+            else:
+                config = DoctorConfig()
+    except (TypeError, OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
 
     if features_dir:
         config.features_dir = features_dir
@@ -61,10 +68,14 @@ def _parse_id_list(value: str | None) -> list[str] | None:
 
 
 def _emit(output: str, output_file: str | None) -> None:
-    if output_file:
-        Path(output_file).write_text(output, encoding="utf-8")
-    else:
+    if not output_file:
         typer.echo(output)
+        return
+    try:
+        Path(output_file).write_text(output, encoding="utf-8")
+    except OSError as exc:
+        typer.echo(f"Error: cannot write to {output_file!r}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
 
 
 @app.callback(invoke_without_command=True)
@@ -121,7 +132,16 @@ def scan(
     """Run all rules and report diagnostics."""
     project_path = path.resolve()
     cfg = _load_config(config, features_dir, steps_dir, project_path)
-    min_severity = Severity(severity) if severity else None
+
+    if severity is not None:
+        try:
+            min_severity = Severity(severity.lower())
+        except ValueError:
+            valid = ", ".join(s.value for s in Severity)
+            typer.echo(f"Error: invalid severity {severity!r}. Valid: {valid}.", err=True)
+            raise typer.Exit(code=2) from None
+    else:
+        min_severity = None
 
     try:
         report = build_report(
@@ -135,13 +155,17 @@ def scan(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
-    formatted = format_report(
-        report,
-        fmt=fmt,
-        use_color=not no_color,
-        quiet=quiet,
-        verbose=verbose,
-    )
+    try:
+        formatted = format_report(
+            report,
+            fmt=fmt,
+            use_color=not no_color,
+            quiet=quiet,
+            verbose=verbose,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     _emit(formatted, output)
     raise typer.Exit(code=report.exit_code)
 
@@ -246,11 +270,16 @@ def main(argv: list[str] | None = None) -> int:
         argv = ["scan", *argv]
 
     try:
-        app(args=argv, standalone_mode=False)
+        rv = app(args=argv, standalone_mode=False)
     except typer.Exit as exc:
         code = getattr(exc, "exit_code", getattr(exc, "code", None))
         return int(code) if code is not None else 0
     except SystemExit as exc:
         code = getattr(exc, "code", None)
         return int(code) if code is not None else 0
+    # In standalone_mode=False, click returns the exit code directly
+    # (from typer.Exit/click.Exit) instead of raising. If the command
+    # itself raises typer.Exit, click catches it and returns the code.
+    if isinstance(rv, int):
+        return rv
     return 0

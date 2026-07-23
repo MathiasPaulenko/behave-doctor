@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from behave_model import Project
+
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.enums import Category, Severity
@@ -38,6 +40,34 @@ def test_bd201_detects_duplicate_step_patterns() -> None:
     assert diag.severity is Severity.ERROR
     assert diag.category is Category.QUALITY
     assert "Duplicate step definition" in diag.message
+
+
+def test_bd201_distinguishes_keywords(tmp_path: Path) -> None:
+    """Same pattern with different keywords is not a duplicate; same keyword is."""
+    steps_dir = tmp_path / "steps"
+    steps_dir.mkdir()
+    (steps_dir / "steps.py").write_text(
+        "from behave import given, when, step\n"
+        '@given("a thing")\n'
+        "def g(): pass\n"
+        '@when("a thing")\n'
+        "def w(): pass\n"
+        '@step("a thing")\n'
+        "def s(): pass\n"
+        '@given("a thing")\n'
+        "def g2(): pass\n",
+        encoding="utf-8",
+    )
+    step_defs = scan_steps(steps_dir, DoctorConfig())
+    ctx = RuleContext(
+        project=Project(features=[], global_tags=[], metadata=None),
+        step_definitions=step_defs,
+        dependency_graph=DependencyGraph(),
+        config=DoctorConfig(),
+    )
+    diagnostics = DuplicateStepDefs().check(ctx)
+    assert len(diagnostics) == 1
+    assert "a thing" in diagnostics[0].message
 
 
 def test_bd202_detects_untagged_scenarios() -> None:

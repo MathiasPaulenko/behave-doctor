@@ -57,6 +57,7 @@ def test_output_has_correct_top_level_keys() -> None:
         "project_path",
         "scanned_at",
         "scan_duration_ms",
+        "exit_code",
         "statistics",
         "diagnostics",
     }
@@ -92,3 +93,10 @@ def test_empty_diagnostics_produces_valid_output() -> None:
     out = JsonReporter().format(_report([]))
     data = json.loads(out)
     assert data["diagnostics"] == []
+
+
+def test_exit_code_included_in_output() -> None:
+    out = JsonReporter().format(_report([_diag()]))
+    data = json.loads(out)
+    assert "exit_code" in data
+    assert data["exit_code"] == 1  # warning diagnostics are issues

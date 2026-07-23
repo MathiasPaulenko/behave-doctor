@@ -38,12 +38,12 @@ print(f"Exit code: {report.exit_code}")
 ### Example: with custom config
 
 ```python
-from behave_doctor import scan_project, DoctorConfig
+from behave_doctor import scan_project, DoctorConfig, Severity
 
 config = DoctorConfig(
     features_dir="my_features",
     steps_dir="my_steps",
-    min_severity="warning",
+    min_severity=Severity.WARNING,
     rules={
         "BD101": {"enabled": False},
         "BD401": {"max_steps": 5},
@@ -77,12 +77,14 @@ an exit code.
 
 ### Attributes
 
-| Attribute       | Type                  | Description                              |
-| --------------- | --------------------- | ---------------------------------------- |
-| `diagnostics`   | `list[Diagnostic]`    | All diagnostics found during the scan.   |
-| `statistics`    | `ProjectStatistics`   | Aggregate statistics about the project.  |
-| `exit_code`     | `int`                 | 0 = clean, 1 = issues, 2 = scan error.   |
-| `scan_duration` | `float`               | Scan duration in seconds.                |
+| Attribute          | Type                  | Description                              |
+| ------------------ | --------------------- | ---------------------------------------- |
+| `diagnostics`      | `list[Diagnostic]`    | All diagnostics found during the scan.   |
+| `statistics`       | `ProjectStatistics`   | Aggregate statistics about the project.  |
+| `exit_code`        | `int`                 | 0 = clean, 1 = issues found.             |
+| `scan_duration_ms` | `int`                 | Scan duration in milliseconds.           |
+| `scanned_at`       | `datetime`            | Timestamp of the scan.                   |
+| `project_path`     | `Path`                | Root path of the scanned project.        |
 
 ## `Diagnostic`
 
@@ -94,17 +96,17 @@ A single diagnostic finding produced by a rule.
 
 ### Attributes
 
-| Attribute    | Type        | Description                                      |
-| ------------ | ----------- | ------------------------------------------------ |
-| `rule_id`    | `str`       | Rule identifier (e.g. `"BD301"`).                |
-| `rule_name`  | `str`       | Human-readable rule name (e.g. `"unused-step-def"`). |
-| `severity`   | `Severity`  | One of `ERROR`, `WARNING`, `INFO`, `HINT`.       |
-| `category`   | `Category`  | One of `STRUCTURE`, `QUALITY`, `COVERAGE`, `COMPLEXITY`, `DEPENDENCY`. |
-| `message`    | `str`       | Human-readable description of the issue.         |
-| `file`       | `str`       | File path relative to the project root.          |
-| `line`       | `int`       | Line number (1-based).                           |
-| `suggestion` | `str | None`| Optional fix suggestion.                         |
-| `metadata`   | `dict`      | Optional rule-specific metadata.                 |
+| Attribute    | Type           | Description                                                            |
+| ------------ | -------------- | ---------------------------------------------------------------------- |
+| `rule_id`    | `str`          | Rule identifier (e.g. `"BD301"`).                                      |
+| `rule_name`  | `str`          | Human-readable rule name (e.g. `"unused-step-def"`).                   |
+| `severity`   | `Severity`     | One of `ERROR`, `WARNING`, `INFO`, `HINT`.                             |
+| `category`   | `Category`     | One of `STRUCTURE`, `QUALITY`, `COVERAGE`, `COMPLEXITY`, `DEPENDENCY`. |
+| `message`    | `str`          | Human-readable description of the issue.                               |
+| `file`       | `Path \| None` | File path where the issue was found.                                   |
+| `line`       | `int \| None`  | Line number (1-based), if applicable.                                  |
+| `suggestion` | `str \| None`  | Optional fix suggestion.                                               |
+| `metadata`   | `dict`         | Optional rule-specific metadata.                                       |
 
 ## `Severity`
 
@@ -147,13 +149,14 @@ Configuration for a scan. All fields have defaults.
 
 ### Attributes
 
-| Attribute         | Type                  | Default          | Description                          |
-| ----------------- | --------------------- | ---------------- | ------------------------------------ |
-| `features_dir`    | `str`                 | `"features"`     | Relative path to features.           |
-| `steps_dir`       | `str`                 | `"features/steps"` | Relative path to step definitions. |
-| `min_severity`    | `str`                 | `"hint"`         | Minimum severity to report.          |
-| `exclude_tags`    | `list[str]`           | `[]`             | Tags excluded from BD303.            |
-| `rules`           | `dict[str, dict]`     | `{}`             | Per-rule configuration.              |
+| Attribute         | Type                  | Default            | Description                          |
+| ----------------- | --------------------- | ------------------ | ------------------------------------ |
+| `features_dir`    | `str`                 | `"features/"`      | Relative path to features.           |
+| `steps_dir`       | `str`                 | `"features/steps/"`| Relative path to step definitions.   |
+| `min_severity`    | `Severity`            | `Severity.INFO`    | Minimum severity to report.          |
+| `exclude_tags`    | `list[str]`           | `[]`               | Tags excluded from BD303.            |
+| `exclude_paths`   | `list[str]`           | `[]`               | Glob patterns to exclude from scan.  |
+| `rules`           | `dict[str, dict]`     | `{}`               | Per-rule configuration.              |
 
 ### Loading from `pyproject.toml`
 
@@ -173,17 +176,17 @@ Aggregate statistics about the scanned project.
 
 ### Attributes
 
-| Attribute                  | Type    | Description                              |
-| -------------------------- | ------- | ---------------------------------------- |
-| `features`                 | `int`   | Total number of features.                |
-| `scenarios`                | `int`   | Total number of scenarios.               |
-| `steps`                    | `int`   | Total number of steps.                   |
-| `step_definitions`         | `int`   | Total number of step definitions.        |
-| `tags`                     | `int`   | Number of unique tags.                   |
-| `total_tag_usages`         | `int`   | Total tag usages across all scenarios.   |
-| `avg_steps_per_scenario`   | `float` | Average steps per scenario.              |
-| `unused_step_definitions`  | `int`   | Step definitions never matched.          |
-| `undefined_steps`          | `int`   | Feature steps with no matching definition.|
+| Attribute                    | Type     | Description                                |
+| ---------------------------- | -------- | ------------------------------------------ |
+| `features`                   | `int`    | Total number of features.                  |
+| `scenarios`                  | `int`    | Total number of scenarios.                 |
+| `steps`                      | `int`    | Total number of steps.                     |
+| `step_definitions`           | `int`    | Total number of step definitions.          |
+| `tags`                       | `int`    | Number of unique tags.                     |
+| `total_tag_usages`           | `int`    | Total tag usages across all scenarios.     |
+| `average_steps_per_scenario` | `float`  | Average steps per scenario.                |
+| `unused_step_definitions`    | `int`    | Step definitions never matched.            |
+| `undefined_steps`            | `int`    | Steps with no matching definition.         |
 
 ## Example: custom reporter
 

@@ -11,7 +11,9 @@ from behave_doctor.reporters.text import TextReporter
 class Reporter(Protocol):
     """Protocol implemented by all reporters."""
 
-    def format(self, report: ProjectReport) -> str: ...
+    def format(self, report: ProjectReport) -> str:
+        """Format a ``ProjectReport`` as a string."""
+        ...
 
 
 __all__ = ["Reporter", "TextReporter"]

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import logging
 import re
-import sys
 from pathlib import Path
 
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.step_definition import StepDefinition
+
+logger = logging.getLogger(__name__)
 
 # Decorator names that mark step definitions, mapped to the canonical keyword.
 _STEP_KEYWORDS: dict[str, str] = {
@@ -18,8 +20,8 @@ _STEP_KEYWORDS: dict[str, str] = {
     "step": "step",
 }
 
-# Regex to find {name} placeholders in parse-type patterns.
-_PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+# Regex to find {name} and {name:type} placeholders in parse/cfparse patterns.
+_PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^}]*)?\}")
 
 
 def _compile_parse_pattern(pattern: str) -> re.Pattern[str]:
@@ -49,18 +51,6 @@ def extract_parameters(pattern: str, matcher_type: str) -> list[str]:
     return _PLACEHOLDER_RE.findall(pattern)
 
 
-def _decorator_name(node: ast.expr) -> str | None:
-    """Return the simple name a decorator is called with, if any.
-
-    Handles ``given``, ``given`` (attribute access returns the attribute name).
-    """
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
-
 def _decorator_call(node: ast.expr) -> ast.Call | None:
     """Return the underlying ``ast.Call`` for a decorator node.
 
@@ -75,7 +65,7 @@ def _decorator_call(node: ast.expr) -> ast.Call | None:
 def _resolve_keyword(
     node: ast.expr,
     alias_map: dict[str, str],
-    behave_imported: bool,
+    module_aliases: set[str],
 ) -> str | None:
     """Resolve a decorator node to a canonical step keyword, or ``None``."""
     call = _decorator_call(node)
@@ -90,9 +80,9 @@ def _resolve_keyword(
             return _STEP_KEYWORDS[name]
         return None
 
-    # Attribute access: @behave.given(...)
+    # Attribute access: @behave.given(...) / @b.when(...)
     if isinstance(target, ast.Attribute):
-        if isinstance(target.value, ast.Name) and target.value.id == "behave":
+        if isinstance(target.value, ast.Name) and target.value.id in module_aliases:
             return _STEP_KEYWORDS.get(target.attr)
         return None
 
@@ -100,10 +90,20 @@ def _resolve_keyword(
 
 
 def _first_string_arg(call: ast.Call) -> str | None:
-    """Return the first positional string-literal argument of a call, if any."""
+    """Return the step pattern string from a decorator call.
+
+    Behave step decorators accept the pattern as the first positional argument
+    or as the ``pattern=`` keyword argument. This function returns the first
+    string literal found in either location.
+    """
     for arg in call.args:
         if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
             return arg.value
+    for keyword in call.keywords:
+        if keyword.arg == "pattern":
+            value = keyword.value
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                return value.value
     return None
 
 
@@ -112,18 +112,23 @@ def _has_converter_kwarg(call: ast.Call) -> bool:
     return any(kw.arg == "converter" for kw in call.keywords)
 
 
-def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], bool]:
-    """Build a map of aliased step decorators and detect ``import behave``.
+def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], set[str]]:
+    """Build a map of aliased step decorators and module aliases.
 
-    Returns a tuple ``(alias_map, behave_imported)`` where ``alias_map`` maps
-    the local alias name to the canonical keyword (e.g. ``{"g": "given"}``).
+    Returns ``alias_map`` mapping the local alias name to the canonical keyword
+    (e.g. ``{"g": "given"}``), and ``module_aliases`` containing the names
+    that refer to the ``behave`` module (e.g. ``{"behave", "b"}``).
     """
     alias_map: dict[str, str] = {}
-    behave_imported = False
+    module_aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if node.module != "behave":
                 continue
+            # `from behave import *` makes the canonical step decorators available.
+            if any(alias.name == "*" for alias in node.names):
+                for base in _STEP_KEYWORDS:
+                    alias_map.setdefault(base, _STEP_KEYWORDS[base])
             for alias in node.names:
                 base = alias.name
                 if base in _STEP_KEYWORDS:
@@ -131,9 +136,41 @@ def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], bool]:
                     alias_map[local] = _STEP_KEYWORDS[base]
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == "behave":
-                    behave_imported = True
-    return alias_map, behave_imported
+                # For "import behave" or "import behave.given", the name bound
+                # in the module namespace is the top-level package (behave).
+                # If an asname is present, only that alias is bound.
+                if alias.name == "behave" or alias.name.startswith("behave."):
+                    local = alias.asname or alias.name.split(".")[0]
+                    module_aliases.add(local)
+    return alias_map, module_aliases
+
+
+class _StepFunctionCollector(ast.NodeVisitor):
+    """Collect module-level functions/async functions, excluding nested and class methods."""
+
+    def __init__(self) -> None:
+        self.functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        self._func_depth = 0
+        self._class_depth = 0
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        if self._func_depth == 0 and self._class_depth == 0:
+            self.functions.append(node)
+        self._func_depth += 1
+        self.generic_visit(node)
+        self._func_depth -= 1
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+        if self._func_depth == 0 and self._class_depth == 0:
+            self.functions.append(node)
+        self._func_depth += 1
+        self.generic_visit(node)
+        self._func_depth -= 1
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        self._class_depth += 1
+        self.generic_visit(node)
+        self._class_depth -= 1
 
 
 def _module_dotted_path(file: Path, steps_path: Path) -> str:
@@ -148,41 +185,42 @@ def scan_steps(steps_path: Path, config: DoctorConfig) -> list[StepDefinition]:
 
     Args:
         steps_path: Directory containing step definition ``.py`` files.
-        config: Configuration (currently unused but reserved for filtering).
+        config: Configuration (used for ``exclude_paths`` filtering).
 
     Returns:
         A list of ``StepDefinition`` objects. If ``steps_path`` does not
         exist, an empty list is returned. Malformed Python files are skipped
         with a warning printed to stderr.
     """
-    del config  # reserved for future filtering/exclude support
-
     if not steps_path.exists():
         return []
 
     definitions: list[StepDefinition] = []
     for py_file in sorted(steps_path.rglob("*.py")):
+        if config.is_excluded(py_file):
+            continue
         try:
-            source = py_file.read_text(encoding="utf-8")
+            source = py_file.read_text(encoding="utf-8-sig")
             tree = ast.parse(source, filename=str(py_file))
-        except SyntaxError as exc:
-            print(
-                f"Warning: could not parse {py_file}: {exc}. Skipping this file.",
-                file=sys.stderr,
-            )
+        except (SyntaxError, OSError, UnicodeError) as exc:
+            logger.warning("Could not parse %s: %s. Skipping this file.", py_file, exc)
             continue
 
-        alias_map, behave_imported = _build_alias_map(tree)
-        module = _module_dotted_path(py_file, steps_path)
+        alias_map, module_aliases = _build_alias_map(tree)
+        try:
+            module = _module_dotted_path(py_file, steps_path)
+        except ValueError:
+            # File is not under steps_path (e.g. via symlink). Skip it.
+            continue
 
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
+        collector = _StepFunctionCollector()
+        collector.visit(tree)
+        for node in collector.functions:
             for decorator in node.decorator_list:
                 call = _decorator_call(decorator)
                 if call is None:
                     continue
-                keyword = _resolve_keyword(decorator, alias_map, behave_imported)
+                keyword = _resolve_keyword(decorator, alias_map, module_aliases)
                 if keyword is None:
                     continue
                 pattern = _first_string_arg(call)

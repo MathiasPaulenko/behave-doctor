@@ -34,8 +34,7 @@ def step_impl(context):
 ### Example output
 
 ```text
-BD201  ERROR  Duplicate step definition: "the user is logged in"
-       (features/steps/auth.py:10 vs features/steps/login.py:15)
+BD201  ERROR  Duplicate step definition for pattern 'the user is logged in' in: features/steps/auth.py:10, features/steps/login.py:15
 ```
 
 ### How to fix
@@ -169,8 +168,7 @@ Scenario: Checkout as guest
 ### Example output
 
 ```text
-BD204  WARNING  Inconsistent tag casing: "@SmokeTest" vs "@smoke_test"
-        Consider standardizing on a single form.
+BD204  WARNING  Inconsistent tag casing for 'smoketest': ['@SmokeTest', '@smoke_test']
 ```
 
 ### How to fix

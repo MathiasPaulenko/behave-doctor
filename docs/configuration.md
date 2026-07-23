@@ -18,10 +18,15 @@ If no config file is found, all defaults are used.
 
 ```toml
 [tool.behave-doctor]
-features_dir = "features"
-steps_dir = "features/steps"
-min_severity = "hint"
+features_dir = "features/"
+steps_dir = "features/steps/"
+min_severity = "info"
 exclude_tags = ["@smoke", "@wip"]
+
+# Exclude paths and tags (alternative to top-level exclude_paths/exclude_tags)
+[tool.behave-doctor.exclude]
+paths = ["features/legacy/**"]
+tags = ["@manual"]
 
 # Disable a rule entirely
 [tool.behave-doctor.rules.BD101]
@@ -44,17 +49,18 @@ max_lines = 200
 
 ## Top-level options
 
-| Option          | Type     | Default          | Description                                          |
-| --------------- | -------- | ---------------- | ---------------------------------------------------- |
-| `features_dir`  | string   | `features`       | Relative path to the features directory.             |
-| `steps_dir`     | string   | `features/steps` | Relative path to the step definitions directory.     |
-| `min_severity`  | string   | `hint`           | Minimum severity to report (see below).              |
-| `exclude_tags`  | list     | `[]`             | Tags excluded from BD303 (unused-tag) analysis.      |
+| Option          | Type     | Default            | Description                                          |
+| --------------- | -------- | ------------------ | ---------------------------------------------------- |
+| `features_dir`  | string   | `features/`        | Relative path to the features directory.             |
+| `steps_dir`     | string   | `features/steps/`  | Relative path to the step definitions directory.     |
+| `min_severity`  | string   | `info`             | Minimum severity to report (see below).              |
+| `exclude_tags`  | list     | `[]`               | Tags excluded from BD303 (unused-tag) analysis.      |
+| `exclude_paths` | list     | `[]`               | Glob patterns of paths to exclude from scanning.     |
 
 ### `features_dir`
 
 Relative path from the project root to the directory containing `.feature`
-files. Defaults to `features` (the Behave convention).
+files. Defaults to `features/` (the Behave convention).
 
 ```toml
 features_dir = "tests/features"
@@ -63,7 +69,7 @@ features_dir = "tests/features"
 ### `steps_dir`
 
 Relative path from the project root to the directory containing Python step
-definitions. Defaults to `features/steps` (the Behave convention).
+definitions. Defaults to `features/steps/` (the Behave convention).
 
 ```toml
 steps_dir = "tests/steps"
@@ -72,7 +78,16 @@ steps_dir = "tests/steps"
 ### `min_severity`
 
 Controls the minimum severity of diagnostics to report. Diagnostics below
-this level are suppressed.
+this level are suppressed. Default: `"info"` (shows errors, warnings, and info).
+
+Valid values (from most to least severe):
+
+| Value      | Shows                                  |
+| ---------- | -------------------------------------- |
+| `"error"`  | Only errors.                           |
+| `"warning"`| Errors and warnings.                   |
+| `"info"`   | Errors, warnings, and info (default).  |
+| `"hint"`   | Everything, including hints.           |
 
 ```toml
 min_severity = "warning"  # only show errors and warnings
@@ -85,6 +100,15 @@ are considered "intentionally unused" and will not be flagged.
 
 ```toml
 exclude_tags = ["@smoke", "@wip", "@manual"]
+```
+
+### `exclude_paths`
+
+A list of glob patterns for paths to exclude from scanning. Files matching
+these patterns will not be parsed or analyzed.
+
+```toml
+exclude_paths = ["features/legacy/**", "**/test_*.py"]
 ```
 
 ## Per-rule options
@@ -148,8 +172,8 @@ Or simply set `min_severity = "warning"` to suppress all `info` diagnostics.
 | --------- | ------------------------------------------------ |
 | `error`   | Only errors.                                     |
 | `warning` | Errors and warnings.                             |
-| `info`    | Errors, warnings, and info.                      |
-| `hint`    | Everything (default).                            |
+| `info`    | Errors, warnings, and info (default).            |
+| `hint`    | Everything.                                      |
 
 Severity hierarchy: `error` > `warning` > `info` > `hint`.
 

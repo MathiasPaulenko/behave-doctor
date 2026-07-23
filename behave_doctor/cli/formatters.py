@@ -31,6 +31,7 @@ def format_report(
     Raises:
         ValueError: If ``fmt`` is not a supported format.
     """
+    fmt = fmt.strip().lower()
     if fmt == "text":
         return TextReporter(use_color=use_color, quiet=quiet, verbose=verbose).format(report)
     if fmt == "json":

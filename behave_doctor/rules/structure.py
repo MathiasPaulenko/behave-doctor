@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from behave_doctor.model import (
+    all_project_tags,
+    project_scenario_count,
+    project_step_count,
+    tag_name,
+)
 from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
 from behave_doctor.rules import register
@@ -43,7 +49,7 @@ class ScenarioCount(Rule):
     description = "Report total scenario count."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        count = len(context.project.all_scenarios())
+        count = project_scenario_count(context.project)
         return [
             Diagnostic(
                 rule_id=self.id,
@@ -67,7 +73,7 @@ class StepCount(Rule):
     description = "Report total step count."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        count = len(context.project.all_steps())
+        count = project_step_count(context.project)
         return [
             Diagnostic(
                 rule_id=self.id,
@@ -91,8 +97,8 @@ class TagCoverage(Rule):
     description = "Report tag usage distribution."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        tags = context.project.all_tags()
-        unique = {t.name for t in tags}
+        tags = all_project_tags(context.project)
+        unique = {tag_name(t) for t in tags}
         total = len(tags)
         return [
             Diagnostic(

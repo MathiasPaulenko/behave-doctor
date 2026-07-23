@@ -97,6 +97,19 @@ def test_run_rules_skips_disabled_rules() -> None:
     assert diagnostics[0].rule_id == "BDX02"
 
 
+def test_run_rules_treats_bool_overrides_as_enabled_flag() -> None:
+    config = DoctorConfig(rules={"BDX01": False, "BDX02": True})
+    diagnostics = run_rules(_context(config), [_DummyA(), _DummyB()])
+    assert len(diagnostics) == 1
+    assert diagnostics[0].rule_id == "BDX02"
+
+
+def test_run_rules_ignores_invalid_override_types() -> None:
+    config = DoctorConfig(rules={"BDX01": [1, 2, 3]})
+    diagnostics = run_rules(_context(config), [_DummyA(), _DummyB()])
+    assert len(diagnostics) == 2
+
+
 def test_registry_register_and_get() -> None:
     clear_registry()
     register(_DummyA)

@@ -73,3 +73,49 @@ def test_from_pyproject_rule_overrides_merge_enabled_default(tmp_path: Path) -> 
     )
     config = DoctorConfig.from_pyproject(pyproject)
     assert config.rules["BD401"] == {"enabled": True, "max_steps": 5}
+
+
+def test_from_pyproject_top_level_exclude_tags(tmp_path: Path) -> None:
+    """Top-level exclude_tags and exclude_paths are read and merged with sub-table."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        "[tool.behave-doctor]\n"
+        'exclude_tags = ["@smoke"]\n'
+        'exclude_paths = ["features/legacy/**"]\n'
+        "[tool.behave-doctor.exclude]\n"
+        'tags = ["@wip"]\n'
+        'paths = ["features/archived/**"]\n',
+        encoding="utf-8",
+    )
+    config = DoctorConfig.from_pyproject(pyproject)
+    assert config.exclude_tags == ["@smoke", "@wip"]
+    assert config.exclude_paths == ["features/legacy/**", "features/archived/**"]
+
+
+def test_from_pyproject_severity_is_case_insensitive(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[tool.behave-doctor]\nmin_severity = "ERROR"\n', encoding="utf-8")
+    config = DoctorConfig.from_pyproject(pyproject)
+    assert config.min_severity is Severity.ERROR
+
+
+def test_from_pyproject_exclude_values_can_be_strings(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[tool.behave-doctor]\nexclude_paths = "features/legacy/**"\nexclude_tags = "@wip"\n',
+        encoding="utf-8",
+    )
+    config = DoctorConfig.from_pyproject(pyproject)
+    assert config.exclude_paths == ["features/legacy/**"]
+    assert config.exclude_tags == ["@wip"]
+
+
+def test_from_pyproject_rule_override_can_be_boolean(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        "[tool.behave-doctor.rules]\nBD101 = false\nBD102 = true\n",
+        encoding="utf-8",
+    )
+    config = DoctorConfig.from_pyproject(pyproject)
+    assert config.rules["BD101"] == {"enabled": False}
+    assert config.rules["BD102"] == {"enabled": True}

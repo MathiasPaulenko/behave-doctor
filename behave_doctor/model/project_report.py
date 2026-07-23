@@ -71,6 +71,11 @@ class ProjectReport:
         return bool(self.errors)
 
     @property
+    def has_warnings(self) -> bool:
+        """``True`` if the report contains at least one warning."""
+        return any(d.severity is Severity.WARNING for d in self.diagnostics)
+
+    @property
     def exit_code(self) -> int:
-        """Exit code: ``0`` if no errors, ``1`` if any errors."""
-        return 1 if self.has_errors else 0
+        """Exit code: ``0`` if clean, ``1`` if any errors or warnings were found."""
+        return 1 if (self.has_errors or self.has_warnings) else 0

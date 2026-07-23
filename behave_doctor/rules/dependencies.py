@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
-from typing import Any
 
 from behave_doctor.graph.cycles import detect_cycles
 from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
 from behave_doctor.rules import register
 from behave_doctor.rules.base import Rule, RuleContext
+
+# Regex to extract Python identifiers from string annotations.
+_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 @register
@@ -60,25 +63,28 @@ class UnusedImport(Rule):
 
     def _check_file(self, file: Path) -> list[Diagnostic]:
         try:
-            source = file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(file))
-        except (SyntaxError, OSError):
+            source = file.read_text(encoding="utf-8-sig")
+            tree = ast.parse(source, filename=str(file), type_comments=True)
+        except (SyntaxError, OSError, UnicodeError):
             return []
 
-        imports: list[tuple[str, int, str]] = []
+        imports: list[tuple[str, int]] = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     local = alias.asname or alias.name.split(".")[0]
-                    imports.append((local, node.lineno, local))
+                    imports.append((local, node.lineno))
             elif isinstance(node, ast.ImportFrom):
+                # Skip __future__ imports — they are always "used" by the interpreter.
+                if node.module == "__future__":
+                    continue
                 for alias in node.names:
                     if alias.name == "*":
                         continue
                     local = alias.asname or alias.name
-                    imports.append((local, node.lineno, local))
+                    imports.append((local, node.lineno))
 
-        # Collect all Name references in the file body.
+        # Collect all Name references and string annotation names in the file body.
         used: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Name):
@@ -89,9 +95,23 @@ class UnusedImport(Rule):
                     root = root.value
                 if isinstance(root, ast.Name):
                     used.add(root.id)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                # String annotations (forward references) may reference imports.
+                # Extract identifiers so "List[int]" yields "List" and "int".
+                words = set(_IDENTIFIER_RE.findall(node.value))
+                for local, _ in imports:
+                    if local in words:
+                        used.add(local)
+            # Check type_comment attributes (from `# type: ...` comments).
+            tc = getattr(node, "type_comment", None)
+            if tc and isinstance(tc, str):
+                words = set(_IDENTIFIER_RE.findall(tc))
+                for local, _ in imports:
+                    if local in words:
+                        used.add(local)
 
         diagnostics: list[Diagnostic] = []
-        for local, lineno, _name in imports:
+        for local, lineno in imports:
             if local not in used:
                 diagnostics.append(
                     Diagnostic(
@@ -124,6 +144,8 @@ class MissingStepModule(Rule):
             return []
 
         # If no step definitions exist at all, report the steps directory issue.
+        # When definitions exist but some steps don't match, BD302 already
+        # reports those — BD503 only fires for the "no definitions at all" case.
         if not context.step_definitions:
             return [
                 Diagnostic(
@@ -139,25 +161,4 @@ class MissingStepModule(Rule):
                 )
             ]
 
-        # Otherwise report undefined steps as potentially from missing modules.
-        return [
-            Diagnostic(
-                rule_id=self.id,
-                rule_name=self.name,
-                severity=self.severity,
-                category=self.category,
-                message=(
-                    f'Undefined step "{m.step.full_text}" may reference a missing step module'
-                ),
-                file=_location_path(m.step.location),
-                line=m.step.location.line or None,
-                metadata={"step": m.step.name},
-            )
-            for m in undefined
-        ]
-
-
-def _location_path(location: Any) -> Path | None:
-    """Return a Path for a behave-model location, or ``None``."""
-    filename = getattr(location, "filename", "") or ""
-    return Path(filename) if filename else None
+        return []

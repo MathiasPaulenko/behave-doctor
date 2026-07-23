@@ -41,3 +41,22 @@ def test_cycle_not_duplicated() -> None:
     graph = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
     cycles = detect_cycles(graph)
     assert len(cycles) == 1
+
+
+def test_deep_chain_no_recursion_limit() -> None:
+    """A very deep chain must not hit Python's recursion limit."""
+    n = 5000
+    graph = {f"m{i}": {f"m{i + 1}"} for i in range(n)}
+    graph[f"m{n}"] = set()
+    # Should complete without RecursionError.
+    cycles = detect_cycles(graph)
+    assert cycles == []
+
+
+def test_deep_chain_with_cycle_at_end() -> None:
+    """A deep chain with a cycle at the end is detected without recursion limit."""
+    n = 5000
+    graph = {f"m{i}": {f"m{i + 1}"} for i in range(n)}
+    graph[f"m{n}"] = {"m0"}  # cycle back to start
+    cycles = detect_cycles(graph)
+    assert len(cycles) == 1

@@ -38,8 +38,9 @@ behave_doctor/
 │   ├── __init__.py          #   Public re-exports
 │   ├── config.py            #   DoctorConfig
 │   ├── dependency_graph.py  #   DependencyGraph
-│   ├── diagnostic.py        #   Diagnostic, Severity, Category
+│   ├── diagnostic.py        #   Diagnostic
 │   ├── enums.py             #   Severity, Category enums
+│   ├── location.py          #   location_path() helper
 │   ├── project_report.py    #   ProjectReport, ProjectStatistics
 │   ├── step_definition.py   #   StepDefinition
 │   └── step_match.py        #   StepMatch
@@ -113,7 +114,7 @@ The input passed to each rule. Contains:
 
 - `project` — the parsed Behave project (features, scenarios, steps).
 - `step_definitions` — all step definitions found.
-- `graph` — the dependency graph.
+- `dependency_graph` — the dependency graph.
 - `config` — the merged configuration.
 
 ## Scan pipeline

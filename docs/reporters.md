@@ -28,18 +28,17 @@ behave-doctor scan . --format text --verbose
 Scanning . ...
 Found 12 features, 47 scenarios, 213 steps, 89 step definitions.
 
-BD101  INFO      12 features
-BD102  INFO      47 scenarios
-BD103  INFO      213 steps
+BD101  INFO      12 features found
+BD102  INFO      47 scenarios found
+BD103  INFO      213 steps found
 BD104  INFO      8 unique tags, 34 total tag usages
-BD201  ERROR     Duplicate step definition: "the user is logged in"
-      (features/steps/auth.py:10 vs features/steps/login.py:15)
+BD201  ERROR     Duplicate step definition for pattern 'the user is logged in' in: features/steps/auth.py:10, features/steps/login.py:15
 BD301  WARNING   Unused step definition: "the user clicks submit"
       (features/steps/auth.py:42)
 BD302  ERROR     Undefined step: "Given the database is seeded"
       (features/login.feature:18)
 
-3 errors, 1 warnings in 0.42s
+3 errors, 1 warning in 0.42s
 ```
 
 ### Quiet output (`--quiet`)
@@ -50,8 +49,7 @@ Only errors are shown — warnings and info diagnostics are suppressed:
 Scanning . ...
 Found 12 features, 47 scenarios, 213 steps, 89 step definitions.
 
-BD201  ERROR     Duplicate step definition: "the user is logged in"
-      (features/steps/auth.py:10 vs features/steps/login.py:15)
+BD201  ERROR     Duplicate step definition for pattern 'the user is logged in' in: features/steps/auth.py:10, features/steps/login.py:15
 BD302  ERROR     Undefined step: "Given the database is seeded"
       (features/login.feature:18)
 
@@ -60,14 +58,12 @@ BD302  ERROR     Undefined step: "Given the database is seeded"
 
 ### Verbose output (`--verbose`)
 
-Each diagnostic includes a suggestion and metadata:
+Each diagnostic includes metadata (and a suggestion when the rule provides one):
 
 ```text
 BD301  WARNING   Unused step definition: "the user clicks submit"
       (features/steps/auth.py:42)
-      Suggestion: Remove the unused step definition or add a feature
-      step that exercises it.
-      Metadata: {"pattern": "the user clicks submit", "matcher": "parse"}
+      Metadata: {"def_id": "steps.when_clicks_submit", "pattern": "the user clicks submit"}
 ```
 
 ### ANSI colors
@@ -97,6 +93,7 @@ Top-level keys (sorted alphabetically):
 ```json
 {
   "diagnostics": [...],
+  "exit_code": 1,
   "project_path": "path/to/project",
   "scan_duration_ms": 420,
   "scanned_at": "2024-01-01T12:00:00.000000",
@@ -110,18 +107,18 @@ Each entry in `diagnostics`:
 
 ```json
 {
+  "category": "coverage",
+  "file": "features/steps/auth.py",
+  "line": 42,
+  "message": "Unused step definition: \"the user clicks submit\"",
+  "metadata": {
+    "def_id": "steps.when_clicks_submit",
+    "pattern": "the user clicks submit"
+  },
   "rule_id": "BD301",
   "rule_name": "unused-step-def",
   "severity": "warning",
-  "category": "coverage",
-  "message": "Unused step definition: \"the user clicks submit\"",
-  "file": "features/steps/auth.py",
-  "line": 42,
-  "suggestion": "Remove the unused step definition or add a feature step that exercises it.",
-  "metadata": {
-    "pattern": "the user clicks submit",
-    "matcher": "parse"
-  }
+  "suggestion": null
 }
 ```
 
@@ -135,7 +132,7 @@ Each entry in `diagnostics`:
   "step_definitions": 89,
   "tags": 8,
   "total_tag_usages": 34,
-  "avg_steps_per_scenario": 4.5,
+  "average_steps_per_scenario": 4.5,
   "unused_step_definitions": 3,
   "undefined_steps": 1
 }
@@ -224,15 +221,14 @@ The output follows the [SARIF 2.1.0 specification](https://docs.oasis-open.org/s
 
 ```json
 {
-  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/cs01/schemas/sarif-schema-2.1.0.json",
   "version": "2.1.0",
   "runs": [
     {
       "tool": {
         "driver": {
           "name": "behave-doctor",
-          "version": "1.0.0",
-          "informationUri": "https://github.com/MathiasPaulenko/behave-doctor",
+          "version": "1.1.0",
           "rules": [...]
         }
       },

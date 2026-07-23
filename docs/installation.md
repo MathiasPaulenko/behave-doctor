@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python **3.11** or newer (tested on 3.11, 3.12, and 3.13)
+- Python **3.11** or newer (tested on 3.11, 3.12, 3.13, and 3.14)
 - `behave-model >= 1.0` (installed automatically as a dependency)
 - `typer >= 0.12` (installed automatically as a dependency)
 
@@ -68,7 +68,7 @@ behave-doctor --version
 ```
 
 ```text
-1.0.0
+1.1.0
 ```
 
 You can also verify the Python API is importable:

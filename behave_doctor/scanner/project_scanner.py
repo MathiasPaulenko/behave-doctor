@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import sys
+import logging
 from pathlib import Path
 
 from behave_model import BehaveParserAdapter, Metadata, Project, parse_feature
 from behave_model.exceptions import ParseError
 
 from behave_doctor.model.config import DoctorConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ScanError(Exception):
@@ -31,8 +33,11 @@ def scan_features(project_path: Path, config: DoctorConfig) -> Project:
     features_dir = (project_path / config.features_dir).resolve()
     if not features_dir.exists():
         raise ScanError(f"features/ directory not found at {features_dir}")
+    if not features_dir.is_dir():
+        raise ScanError(f"features/ path is not a directory: {features_dir}")
 
     feature_files = sorted(features_dir.rglob("*.feature"))
+    feature_files = [f for f in feature_files if not config.is_excluded(f)]
     if not feature_files:
         return Project(
             features=[],
@@ -44,15 +49,17 @@ def scan_features(project_path: Path, config: DoctorConfig) -> Project:
     features = []
     for fpath in feature_files:
         try:
-            text = fpath.read_text(encoding="utf-8")
+            text = fpath.read_text(encoding="utf-8-sig")
             behave_feature = parse_feature(text, filename=str(fpath))
-        except ParseError as exc:
-            print(
-                f"Warning: could not parse {fpath}: {exc}. Skipping this file.",
-                file=sys.stderr,
-            )
+            features.append(adapter.adapt_feature(behave_feature, filename=str(fpath)))
+        except (ParseError, OSError, UnicodeError) as exc:
+            logger.warning("Could not parse %s: %s. Skipping this file.", fpath, exc)
             continue
-        features.append(adapter.adapt_feature(behave_feature, filename=str(fpath)))
+        except Exception as exc:
+            if isinstance(exc, (MemoryError, RecursionError)):
+                raise
+            logger.warning("Could not adapt %s: %s. Skipping this file.", fpath, exc)
+            continue
 
     return Project(
         features=features,

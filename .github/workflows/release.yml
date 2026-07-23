@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -48,11 +48,11 @@ jobs:
 
       - name: Publish to PyPI
         if: steps.version.outputs.bump == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.12.4
 
       - name: Create GitHub Release
         if: steps.version.outputs.bump == 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2.2.2
         with:
           tag_name: "v${{ steps.version.outputs.version }}"
           generate_release_notes: true

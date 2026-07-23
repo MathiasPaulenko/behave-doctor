@@ -4,20 +4,24 @@ build-backend = "hatchling.build"
 
 [project]
 name = "behave-doctor"
-version = "1.1.0"
+version = "1.2.0"
 description = "Static analysis and diagnostics for Behave BDD suites."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Mathias Paulenko" }]
 keywords = ["behave", "bdd", "static-analysis", "lint", "diagnostics", "typer"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
     "Topic :: Software Development :: Testing :: BDD",
     "Typing :: Typed",
@@ -33,11 +37,17 @@ dev = [
     "build>=1.0",
     "pre-commit>=3.0",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+]
 
 [project.scripts]
 behave-doctor = "behave_doctor.__main__:main"
 
 [project.urls]
+Documentation = "https://mathiaspaulenko.github.io/behave-doctor/"
 Homepage = "https://github.com/MathiasPaulenko/behave-doctor"
 Repository = "https://github.com/MathiasPaulenko/behave-doctor"
 Issues = "https://github.com/MathiasPaulenko/behave-doctor/issues"

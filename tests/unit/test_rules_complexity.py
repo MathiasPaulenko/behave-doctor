@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from behave_model import Feature, Location, Project
+
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.enums import Category, Severity
@@ -52,6 +54,29 @@ def test_bd401_detects_scenario_with_too_many_steps() -> None:
         assert diag.severity is Severity.WARNING
         assert diag.category is Category.COMPLEXITY
         assert "12 steps" in diag.message
+    finally:
+        feature_file.unlink()
+
+
+def test_bd401_ignores_non_dict_override() -> None:
+    root = FIXTURES / "oversized_project"
+    features = root / "features"
+    features.mkdir(parents=True, exist_ok=True)
+    feature_file = features / "big.feature"
+    lines = ["Feature: Big", ""]
+    lines.append("  Scenario: Big scenario")
+    for i in range(12):
+        lines.append(f"    Given step {i}")
+    feature_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        ctx = _ctx(
+            "oversized_project",
+            config=DoctorConfig(rules={"BD401": [1, 2, 3]}),
+        )
+        diagnostics = ScenarioTooManySteps().check(ctx)
+        # The non-dict override is ignored, so the default threshold (10) applies.
+        assert len(diagnostics) == 1
+        assert "12 steps" in diagnostics[0].message
     finally:
         feature_file.unlink()
 
@@ -122,3 +147,19 @@ def test_bd403_detects_oversized_feature_file() -> None:
         assert "lines" in diag.message
     finally:
         feature_file.unlink()
+
+
+def test_bd403_skips_unreadable_feature_file(tmp_path: Path) -> None:
+    """FeatureTooLarge must not crash when a feature file cannot be read."""
+    bad = tmp_path / "bad.feature"
+    bad.write_bytes(b"\xff\xfe")
+    feature = Feature(name="Bad", location=Location(filename=str(bad), line=1))
+    project = Project(features=[feature], global_tags=[], metadata=None)
+    ctx = RuleContext(
+        project=project,
+        step_definitions=[],
+        dependency_graph=DependencyGraph(),
+        config=DoctorConfig(rules={"BD403": {"max_lines": 1}}),
+    )
+    diagnostics = FeatureTooLarge().check(ctx)
+    assert diagnostics == []

@@ -168,8 +168,7 @@ the purpose of tagging.
 ### Example output
 
 ```text
-BD304  WARNING  Scenario "Guest checkout" has only unique tags — no tag
-        filter will group it with other scenarios
+BD304  WARNING  Scenario "Guest checkout" has only unique tags ['@checkout', '@guest']
         (features/checkout.feature:5)
 ```
 

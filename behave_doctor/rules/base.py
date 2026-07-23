@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 from behave_model import Project
 
@@ -45,7 +46,7 @@ class Rule(ABC):
         return f"<Rule {self.id} {self.name}>"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RuleContext:
     """Context passed to each rule during a scan.
 
@@ -67,7 +68,35 @@ def _rule_enabled(rule: Rule, config: DoctorConfig) -> bool:
     overrides = config.rules.get(rule.id)
     if overrides is None:
         return True
+    if isinstance(overrides, bool):
+        return overrides
+    if not isinstance(overrides, dict):
+        return True
     return bool(overrides.get("enabled", True))
+
+
+def _get_int_override(
+    overrides: dict[str, Any],
+    key: str,
+    default: int,
+) -> int:
+    """Safely extract an integer override from a rule config dict.
+
+    Args:
+        overrides: The rule's override dict from ``config.rules``.
+        key: The override key (e.g. ``"max_steps"``).
+        default: Fallback value if the key is missing or invalid.
+
+    Returns:
+        The integer value, or ``default`` if the value cannot be converted.
+    """
+    if not isinstance(overrides, dict):
+        return default
+    raw = overrides.get(key, default)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
 
 
 def run_rules(

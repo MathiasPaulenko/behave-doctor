@@ -3,18 +3,30 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from pathlib import Path
-from typing import Any
 
+from behave_doctor.model import (
+    all_project_tags,
+    feature_scenario_count,
+    scenario_tags,
+    tag_name,
+)
 from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
+from behave_doctor.model.location import location_line, location_path
+from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.rules import register
-from behave_doctor.rules.base import Rule, RuleContext
+from behave_doctor.rules.base import Rule, RuleContext, _get_int_override
 
 
 @register
 class DuplicateStepDefs(Rule):
-    """BD201: find step definitions sharing the same pattern (case-insensitive)."""
+    """BD201: find step definitions sharing the same pattern (case-insensitive).
+
+    Definitions with the same pattern but different Gherkin keywords (e.g.
+    ``@given("x")`` and ``@when("x")``) are not duplicates, because Behave keeps
+    separate registries per keyword. ``@step`` is a universal registry, so it
+    conflicts with any keyword-specific definition with the same pattern.
+    """
 
     id = "BD201"
     name = "duplicate-step-defs"
@@ -23,13 +35,25 @@ class DuplicateStepDefs(Rule):
     description = "Same pattern registered multiple times."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        groups: dict[str, list[Any]] = defaultdict(list)
+        groups: dict[str, list[StepDefinition]] = defaultdict(list)
         for definition in context.step_definitions:
             groups[definition.pattern.lower()].append(definition)
+
+        def _conflict(a: StepDefinition, b: StepDefinition) -> bool:
+            if a.keyword == "step" or b.keyword == "step":
+                return True
+            return a.keyword == b.keyword
 
         diagnostics: list[Diagnostic] = []
         for pattern, defs in groups.items():
             if len(defs) < 2:
+                continue
+            has_conflict = any(
+                _conflict(defs[i], defs[j])
+                for i in range(len(defs))
+                for j in range(i + 1, len(defs))
+            )
+            if not has_conflict:
                 continue
             locations = ", ".join(f"{d.file}:{d.line}" for d in defs)
             diagnostics.append(
@@ -60,7 +84,7 @@ class ScenarioNoTags(Rule):
     def check(self, context: RuleContext) -> list[Diagnostic]:
         diagnostics: list[Diagnostic] = []
         for scenario in context.project.all_scenarios():
-            if not scenario.tags:
+            if not scenario_tags(scenario):
                 location = scenario.location
                 diagnostics.append(
                     Diagnostic(
@@ -69,8 +93,8 @@ class ScenarioNoTags(Rule):
                         severity=self.severity,
                         category=self.category,
                         message=f'Scenario "{scenario.name}" has no tags',
-                        file=_location_path(location),
-                        line=location.line or None,
+                        file=location_path(location),
+                        line=location_line(location),
                         metadata={"scenario": scenario.name},
                     )
                 )
@@ -89,11 +113,11 @@ class FeatureTooManyScenarios(Rule):
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         overrides = context.config.rules.get(self.id, {})
-        max_scenarios = int(overrides.get("max_scenarios", 20))
+        max_scenarios = _get_int_override(overrides, "max_scenarios", 20)
 
         diagnostics: list[Diagnostic] = []
         for feature in context.project.features:
-            count = len(feature.all_scenarios())
+            count = feature_scenario_count(feature)
             if count > max_scenarios:
                 location = feature.location
                 diagnostics.append(
@@ -105,8 +129,8 @@ class FeatureTooManyScenarios(Rule):
                         message=(
                             f'Feature "{feature.name}" has {count} scenarios (max {max_scenarios})'
                         ),
-                        file=_location_path(location),
-                        line=location.line or None,
+                        file=location_path(location),
+                        line=location_line(location),
                         metadata={
                             "feature": feature.name,
                             "count": count,
@@ -129,9 +153,10 @@ class InconsistentTagCasing(Rule):
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         casings: dict[str, set[str]] = defaultdict(set)
-        for tag in context.project.all_tags():
-            normalized = _normalize_tag(tag.name)
-            casings[normalized].add(tag.name)
+        for tag in all_project_tags(context.project):
+            name = tag_name(tag)
+            normalized = _normalize_tag(name)
+            casings[normalized].add(name)
 
         diagnostics: list[Diagnostic] = []
         for normalized, variants in casings.items():
@@ -148,12 +173,6 @@ class InconsistentTagCasing(Rule):
                 )
             )
         return diagnostics
-
-
-def _location_path(location: Any) -> Path | None:
-    """Return a Path for a behave-model location, or ``None``."""
-    filename = getattr(location, "filename", "") or ""
-    return Path(filename) if filename else None
 
 
 def _normalize_tag(name: str) -> str:

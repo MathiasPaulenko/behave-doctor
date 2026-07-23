@@ -24,7 +24,7 @@ directory.
 ### Example output
 
 ```text
-BD101  INFO  12 features
+BD101  INFO  12 features found
 ```
 
 ### When this matters
@@ -49,7 +49,7 @@ Scenario Outlines (each example row counts as one scenario).
 ### Example output
 
 ```text
-BD102  INFO  47 scenarios
+BD102  INFO  47 scenarios found
 ```
 
 ### When this matters
@@ -74,7 +74,7 @@ lines, including `And` and `But` continuations).
 ### Example output
 
 ```text
-BD103  INFO  213 steps
+BD103  INFO  213 steps found
 ```
 
 ### When this matters
