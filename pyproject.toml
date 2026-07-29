@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "behave-doctor"
-version = "1.2.0"
+version = "1.2.1"
 description = "Static analysis and diagnostics for Behave BDD suites."
 readme = "README.md"
 requires-python = ">=3.11"
