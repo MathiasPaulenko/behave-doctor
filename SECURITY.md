@@ -17,5 +17,7 @@ provide a fix or mitigation according to severity.
 
 behave-doctor is a read-only static analysis tool. It does not execute code,
 make network calls, or write to the filesystem beyond user-requested output
-files. Vulnerabilities related to parsing untrusted `.feature` or `.py` files
-are in scope.
+files. However, it does parse Python source files via `ast.parse` and read
+`.feature` files from disk. Vulnerabilities related to parsing untrusted
+`.feature` or `.py` files, path traversal in project scanning, or regex
+denial-of-service in step pattern compilation are in scope.
