@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **BD205 — ambiguous-step-match**: New quality rule that detects feature steps
+  matching multiple step definitions, which would cause `AmbiguousStepError` at
+  runtime.
+- **Reporter exports**: `JsonReporter` and `SarifReporter` are now exported from
+  `behave_doctor.reporters` alongside `TextReporter`.
+
+## [1.3.0] - 2026-08-07
+
+### Added
+
+- **Impact analysis**: New `impact` CLI subcommand and `impact_analysis` Python
+  API function. Given a list of changed `.py` or `.feature` files, determines
+  which scenarios are affected and outputs names suitable for `behave --name`,
+  JSON, or human-readable text. Understands Background steps — if a changed
+  step definition is used in a feature's Background, all scenarios in that
+  feature are affected.
+- **New CLI subcommand**: `behave-doctor impact <PATH> --changed-files ...`
+  with `--format` (text, json, names) and `--output` options.
+- **New Python API**: `impact_analysis()`, `format_impact()`, `ImpactResult`,
+  `ImpactSummary`, `AffectedScenario`, `ChangedFile` exported from
+  `behave_doctor`.
+- **New test fixture**: `tests/fixtures/impact_project` with login, checkout,
+  and search features (including Background steps) for realistic impact
+  analysis testing.
+- 12 regression tests covering path resolution, deduplication, background
+  steps, format validation, and edge cases.
+
+### Fixed
+
+- **Relative path resolution**: Changed files passed as relative paths are now
+  resolved against `project_path` instead of the current working directory.
+- **Logging consistency**: Warnings in `_resolve_changed_files` now use
+  `logger.warning()` instead of `print(..., file=sys.stderr)`.
+- **Duplicate file deduplication**: Passing the same changed file multiple
+  times no longer double-counts it in the summary.
+- **Path comparison robustness**: Feature file paths are now `.resolve()`d
+  before comparison to avoid mismatches on different path representations.
+- **Background step performance**: Background steps are now matched once per
+  feature instead of once per scenario, reducing redundant work.
+- **Empty format validation**: `format_impact()` now raises `ValueError` for
+  empty or whitespace-only format strings instead of falling through to an
+  unhelpful error.
+
 ## [1.2.0] - 2026-07-23
 
 ### Fixed

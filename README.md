@@ -1,6 +1,6 @@
 # behave-doctor
 
-**Static analysis and diagnostics for Behave BDD suites.**
+**Lint, diagnose, and analyze the impact of changes in your Behave BDD test suites — without running a single test.**
 
 [![CI](https://github.com/MathiasPaulenko/behave-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/MathiasPaulenko/behave-doctor/actions/workflows/ci.yml)
 [![Docs](https://github.com/MathiasPaulenko/behave-doctor/actions/workflows/docs.yml/badge.svg)](https://mathiaspaulenko.github.io/behave-doctor/)
@@ -16,6 +16,10 @@ definitions **without executing them**, surfacing issues like unused step
 definitions, undefined steps, oversized features, inconsistent tags, and
 circular import dependencies — before they slow down your test suite or
 confuse your team.
+
+It also includes an **impact analysis** command: tell it which files you
+changed, and it tells you exactly which scenarios are affected — so you can
+run only the tests that matter instead of the full suite.
 
 ## Why behave-doctor?
 
@@ -38,18 +42,21 @@ step definitions with the AST — never importing or executing them.
 
 ## Features
 
-- **18 diagnostic rules** across 5 categories:
+- **19 diagnostic rules** across 5 categories:
   - **Structure** (BD101-104) — feature, scenario, step, and tag counts.
-  - **Quality** (BD201-204) — duplicate definitions, missing tags, oversized
-    features, inconsistent tag casing.
+  - **Quality** (BD201-205) — duplicate definitions, missing tags, oversized
+    features, inconsistent tag casing, ambiguous step matches.
   - **Coverage** (BD301-304) — unused step definitions, undefined steps,
     unused tags, orphan scenarios.
   - **Complexity** (BD401-403) — scenario step count, step parameter count,
     feature file size.
   - **Dependencies** (BD501-503) — circular imports, unused imports, missing
     step modules.
-- **3 output formats**: human-readable text (with ANSI colors), JSON, and
-  SARIF 2.1.0 for GitHub Code Scanning.
+- **Impact analysis** — given a list of changed `.py` or `.feature` files,
+  determines which scenarios are affected and outputs names suitable for
+  `behave --name`, JSON, or human-readable text.
+- **4 output formats**: human-readable text (with ANSI colors), JSON, SARIF
+  2.1.0 for GitHub Code Scanning, and `names` for impact analysis.
 - **Minimal runtime dependencies** — only `behave-model` (parsing) and
   `typer` (CLI). Pure Python, fully typed, `mypy --strict` clean, `ruff`
   clean.
@@ -57,9 +64,9 @@ step definitions with the AST — never importing or executing them.
   thresholds, enable/disable, severity filtering, tag exclusions.
 - **Python API** for embedding in custom tooling, IDE plugins, or CI
   integrations.
-- **CLI** with `scan`, `list-rules`, `explain`, `stats`, and `graph`
-  subcommands.
-- **95% test coverage** — 192 tests across unit and integration suites.
+- **CLI** with `scan`, `impact`, `list-rules`, `explain`, `stats`, and
+  `graph` subcommands.
+- **95% test coverage** — 270 tests across unit and integration suites.
 
 ## Installation
 
@@ -92,6 +99,62 @@ BD302  ERROR     Undefined step: "Given the database is seeded"  (features/login
 
 Exit codes: `0` = clean, `1` = issues found, `2` = scan error.
 
+## Impact analysis
+
+Tell behave-doctor which files you changed, and it tells you which scenarios
+are affected — so you can run only the tests that matter.
+
+```bash
+# Which scenarios are affected by changes to login_steps.py?
+behave-doctor impact . --changed-files features/steps/login_steps.py
+```
+
+```text
+Impact analysis: 1 changed files
+
+Changed files:
+  - /path/to/features/steps/login_steps.py (4 step definitions)
+
+Affected scenarios (4):
+  /path/to/features/login.feature:3  Successful login
+  /path/to/features/login.feature:11  Failed login
+  /path/to/features/search.feature:5  Search by keyword
+  /path/to/features/search.feature:12  Search with filter
+
+Affected features (2):
+  /path/to/features/login.feature
+  /path/to/features/search.feature
+```
+
+Get scenario names for `behave --name`:
+
+```bash
+behave-doctor impact . --changed-files features/steps/login_steps.py --format names
+```
+
+```text
+Successful login
+Failed login
+Search by keyword
+Search with filter
+```
+
+Pipe directly to Behave:
+
+```bash
+behave-doctor impact . --changed-files features/steps/login_steps.py --format names | xargs -I{} behave --name "{}"
+```
+
+JSON output for CI integration:
+
+```bash
+behave-doctor impact . --changed-files features/steps/login_steps.py --format json
+```
+
+Impact analysis understands **Background steps** — if a changed step
+definition is used in a feature's Background, all scenarios in that feature
+are affected.
+
 ## Rules
 
 | ID    | Name                        | Severity | Category     | Configurable                                       |
@@ -104,6 +167,7 @@ Exit codes: `0` = clean, `1` = issues found, `2` = scan error.
 | BD202 | scenario-no-tags            | warning  | Quality      | No                                                 |
 | BD203 | feature-too-many-scenarios  | warning  | Quality      | `max_scenarios` (default 20)                       |
 | BD204 | inconsistent-tag-casing     | warning  | Quality      | No                                                 |
+| BD205 | ambiguous-step-match        | error    | Quality      | No                                                 |
 | BD301 | unused-step-def             | warning  | Coverage     | No                                                 |
 | BD302 | undefined-step              | error    | Coverage     | No                                                 |
 | BD303 | unused-tag                  | info     | Coverage     | `exclude_tags` (global)                            |
@@ -118,7 +182,7 @@ Exit codes: `0` = clean, `1` = issues found, `2` = scan error.
 Explore rules from the CLI:
 
 ```bash
-behave-doctor list-rules          # list all 18 rules
+behave-doctor list-rules          # list all 19 rules
 behave-doctor explain BD301       # explain a specific rule
 ```
 
@@ -171,6 +235,8 @@ behave-doctor scan . --format sarif -o behave-doctor.sarif
 
 ## Python API
 
+### Scanning
+
 ```python
 from behave_doctor import scan_project, Severity
 
@@ -204,6 +270,30 @@ config = DoctorConfig(
 report = scan_project("path/to/project", config=config)
 ```
 
+### Impact analysis
+
+```python
+from behave_doctor import impact_analysis, format_impact
+
+result = impact_analysis(
+    "path/to/project",
+    changed_files=["features/steps/login_steps.py"],
+)
+
+# Affected scenario names (suitable for behave --name)
+for name in result.scenario_names:
+    print(name)
+
+# Summary counts
+print(f"{result.summary.scenarios_affected} scenarios affected")
+print(f"{result.summary.features_affected} features affected")
+
+# Format as text, JSON, or names
+print(format_impact(result, "text"))
+print(format_impact(result, "json"))
+print(format_impact(result, "names"))
+```
+
 ## CI/CD
 
 ### GitHub Actions (basic lint)
@@ -229,7 +319,7 @@ report = scan_project("path/to/project", config=config)
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.1.0
+    rev: v1.3.0
     hooks:
       - id: behave-doctor
         args: ["scan", "--severity", "warning", "--no-color"]
@@ -245,7 +335,7 @@ behave-doctor never executes your code. It works in four phases:
 2. **Match** — Each feature step is matched against step definitions using
    the matcher type (`re`, `parse`, `cfparse`, or `behave`'s default). The
    dependency graph records which definitions are used and which are not.
-3. **Analyze** — 18 rules visit the project, step definitions, and
+3. **Analyze** — 19 rules visit the project, step definitions, and
    dependency graph to produce diagnostics.
 4. **Report** — Diagnostics are formatted as text, JSON, or SARIF and written
    to stdout or a file.
@@ -264,6 +354,20 @@ Full documentation at **<https://mathiaspaulenko.github.io/behave-doctor/>**:
 - [CI/CD](https://mathiaspaulenko.github.io/behave-doctor/ci-cd/)
 - [Architecture](https://mathiaspaulenko.github.io/behave-doctor/architecture/)
 - [FAQ](https://mathiaspaulenko.github.io/behave-doctor/faq/)
+
+## Supply chain & trust
+
+- **Trusted Publishing (OIDC)** — releases to PyPI use
+  [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) via GitHub
+  Actions OIDC. No long-lived API tokens are stored in secrets.
+- **Pinned actions** — all GitHub Actions are pinned to specific versions
+  (e.g. `@v4`, `@v1.12.4`).
+- **Minimal dependencies** — only `behave-model` (parsing) and `typer` (CLI)
+  at runtime. No transitive dependency tree to audit.
+- **No code execution** — behave-doctor never imports or executes your step
+  definitions. It uses Python's `ast` module for static analysis only.
+- **`py.typed` marker** — the package ships with inline type hints.
+- **Reproducible builds** — `hatchling` build backend with no dynamic metadata.
 
 ## Development
 

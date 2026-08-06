@@ -138,7 +138,7 @@ commit:
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.1.0
+    rev: v1.3.0
     hooks:
       - id: behave-doctor
         args: ["scan", "--severity", "warning", "--no-color"]
@@ -203,6 +203,53 @@ pipeline {
         }
     }
 }
+```
+
+## Targeted test execution with impact analysis
+
+Use `behave-doctor impact` to run only the tests affected by your changes
+instead of the full suite. This is especially useful in CI for pull requests
+where you know exactly which files changed.
+
+### GitHub Actions
+
+```yaml
+name: Targeted Tests
+on: [pull_request]
+
+jobs:
+  affected-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install behave-doctor
+      - name: Get changed files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only origin/main...HEAD | tr '\n' ',')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+      - name: Run affected tests
+        run: |
+          behave-doctor impact . --changed-files "${{ steps.changed.outputs.files }}" --format names | xargs -I{} behave --name "{}"
+```
+
+### GitLab CI
+
+```yaml
+affected-tests:
+  stage: test
+  image: python:3.13-slim
+  script:
+    - pip install behave-doctor
+    - FILES=$(git diff --name-only origin/main...HEAD | tr '\n' ',')
+    - behave-doctor impact . --changed-files "$FILES" --format names | xargs -I{} behave --name "{}"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 ```
 
 ## Other CI systems

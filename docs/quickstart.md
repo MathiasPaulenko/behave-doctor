@@ -17,7 +17,7 @@ behave-doctor will:
 2. Parse Python step definitions under `features/steps/` using the AST —
    **without importing or executing them**.
 3. Build a dependency graph (step matches + module imports).
-4. Run all 18 diagnostic rules.
+4. Run all 19 diagnostic rules.
 5. Print a human-readable report to stdout.
 
 ### What you'll see
@@ -189,10 +189,51 @@ print(f"Exit code: {report.exit_code}")
 
 See [Python API](python-api.md) for the full reference.
 
+## Impact analysis
+
+Tell behave-doctor which files you changed, and it tells you which scenarios
+are affected — so you can run only the tests that matter.
+
+```bash
+# Which scenarios are affected by changes to login_steps.py?
+behave-doctor impact . --changed-files features/steps/login_steps.py
+```
+
+```text
+Impact analysis: 1 changed files
+
+Changed files:
+  - /path/to/features/steps/login_steps.py (4 step definitions)
+
+Affected scenarios (4):
+  /path/to/features/login.feature:3  Successful login
+  /path/to/features/login.feature:11  Failed login
+  /path/to/features/search.feature:5  Search by keyword
+  /path/to/features/search.feature:12  Search with filter
+
+Affected features (2):
+  /path/to/features/login.feature
+  /path/to/features/search.feature
+```
+
+Get scenario names for `behave --name`:
+
+```bash
+behave-doctor impact . --changed-files features/steps/login_steps.py --format names
+```
+
+Pipe directly to Behave:
+
+```bash
+behave-doctor impact . --changed-files features/steps/login_steps.py --format names | xargs -I{} behave --name "{}"
+```
+
+See [CLI Reference](cli.md) for the full `impact` command documentation.
+
 ## Next steps
 
 - [CLI Reference](cli.md) — every command, flag, and option.
-- [Rules](rules/index.md) — detailed documentation for all 18 rules.
+- [Rules](rules/index.md) — detailed documentation for all 19 rules.
 - [Configuration](configuration.md) — customize thresholds via
   `pyproject.toml`.
 - [CI/CD](ci-cd.md) — integrate with GitHub Actions and pre-commit.

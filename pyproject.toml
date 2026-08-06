@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "behave-doctor"
-version = "1.2.1"
-description = "Static analysis and diagnostics for Behave BDD suites."
+version = "1.3.0"
+description = "Lint, diagnose, and analyze the impact of changes in your Behave BDD test suites — without running a single test."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Mathias Paulenko" }]
-keywords = ["behave", "bdd", "static-analysis", "lint", "diagnostics", "typer"]
+keywords = ["behave", "bdd", "static-analysis", "lint", "diagnostics", "impact-analysis", "typer"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",

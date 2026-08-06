@@ -188,6 +188,71 @@ Aggregate statistics about the scanned project.
 | `unused_step_definitions`    | `int`    | Step definitions never matched.            |
 | `undefined_steps`            | `int`    | Steps with no matching definition.         |
 
+## `impact_analysis`
+
+Analyze which scenarios are affected by a set of changed files. Given a list
+of changed `.py` step definition files or `.feature` files, determines which
+scenarios in the project are impacted.
+
+```python
+from behave_doctor import impact_analysis, format_impact
+
+result = impact_analysis(
+    "path/to/project",
+    changed_files=["features/steps/login_steps.py"],
+)
+
+# Affected scenario names (suitable for behave --name)
+for name in result.scenario_names:
+    print(name)
+
+# Summary counts
+print(f"{result.summary.scenarios_affected} scenarios affected")
+print(f"{result.summary.features_affected} features affected")
+
+# Format as text, JSON, or names
+print(format_impact(result, "text"))
+print(format_impact(result, "json"))
+print(format_impact(result, "names"))
+```
+
+### `ImpactResult`
+
+The result of an `impact_analysis` call.
+
+| Attribute             | Type                    | Description                              |
+| --------------------- | ----------------------- | ---------------------------------------- |
+| `changed_files`       | `list[ChangedFile]`     | One entry per changed file.              |
+| `affected_scenarios`  | `list[AffectedScenario]`| Deduplicated, sorted by (path, line).    |
+| `affected_features`   | `list[str]`             | Sorted unique feature file paths.        |
+| `summary`             | `ImpactSummary`         | Aggregate counts.                        |
+| `scenario_names`      | `list[str]` (property)  | Scenario names for `behave --name`.      |
+
+### `ImpactSummary`
+
+| Attribute                   | Type  | Description                              |
+| --------------------------- | ----- | ---------------------------------------- |
+| `changed_files`             | `int` | Number of changed files processed.       |
+| `step_definitions_affected` | `int` | Step definitions in changed `.py` files. |
+| `scenarios_affected`        | `int` | Scenarios impacted by the changes.       |
+| `features_affected`         | `int` | Features containing affected scenarios.  |
+
+### `AffectedScenario`
+
+| Attribute        | Type        | Description                              |
+| ---------------- | ----------- | ---------------------------------------- |
+| `feature_path`   | `str`       | Path of the feature file.                |
+| `line`           | `int`       | 1-indexed line number of the scenario.   |
+| `name`           | `str`       | Scenario name (for `behave --name`).     |
+| `matched_steps`  | `list[str]` | Step definition patterns that matched.   |
+
+### `ChangedFile`
+
+| Attribute           | Type  | Description                              |
+| ------------------- | ----- | ---------------------------------------- |
+| `path`              | `str` | Resolved path of the changed file.       |
+| `step_definitions`  | `int` | Step definitions found in this file.     |
+
 ## Example: custom reporter
 
 ```python

@@ -18,7 +18,7 @@ def test_python_m_behave_doctor_version() -> None:
         check=False,
     )
     assert result.returncode == 0
-    assert "1.2.0" in result.stdout
+    assert "1.3.0" in result.stdout
 
 
 def test_python_m_behave_doctor_scan() -> None:

@@ -3,7 +3,7 @@
 ## Synopsis
 
 ```text
-behave-doctor [--version] {scan,list-rules,explain,stats,graph} ...
+behave-doctor [--version] {scan,impact,list-rules,explain,stats,graph} ...
 ```
 
 When no subcommand is given, `scan` is implied. For example,
@@ -187,3 +187,64 @@ statements between them. This is useful for visualizing BD501 (circular
 dependencies) and BD502 (unused imports).
 
 Accepts the same `--features-dir` and `--steps-dir` options as `scan`.
+
+## `impact`
+
+Analyze which scenarios are affected by a set of changed files. Given a list
+of changed `.py` step definition files or `.feature` files, determines which
+scenarios in the project are impacted and outputs them for targeted test
+execution.
+
+### Usage
+
+```text
+behave-doctor impact [PATH] --changed-files FILES [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Default | Description                                      |
+| -------- | ------- | ------------------------------------------------ |
+| `PATH`   | `.`     | Project root directory (must contain `features/`). |
+
+### Options
+
+| Option                   | Default   | Description                                              |
+| ------------------------ | --------- | -------------------------------------------------------- |
+| `--changed-files FILES`  | required  | Comma-separated list of changed file paths.             |
+| `--format FORMAT`        | `text`    | Output format: `text`, `json`, or `names`.               |
+| `-o`, `--output FILE`    | stdout    | Write report to a file instead of stdout.                |
+
+### Exit codes
+
+| Code | Meaning                                              |
+| ---- | ---------------------------------------------------- |
+| 0    | Success (even if no scenarios are affected).         |
+| 1    | One or more changed files do not exist.               |
+| 2    | Invalid format or scan error.                         |
+
+### Examples
+
+```bash
+# Which scenarios are affected by changes to login_steps.py?
+behave-doctor impact . --changed-files features/steps/login_steps.py
+
+# Multiple changed files
+behave-doctor impact . --changed-files src/auth.py,features/login.feature
+
+# Get scenario names for behave --name
+behave-doctor impact . --changed-files features/steps/login_steps.py --format names
+
+# JSON output for CI integration
+behave-doctor impact . --changed-files features/steps/login_steps.py --format json
+
+# Pipe directly to Behave
+behave-doctor impact . --changed-files features/steps/login_steps.py --format names | xargs -I{} behave --name "{}"
+```
+
+Impact analysis understands **Background steps** — if a changed step
+definition is used in a feature's Background, all scenarios in that feature
+are affected.
+
+Relative paths in `--changed-files` are resolved against the project `PATH`,
+not the current working directory.
