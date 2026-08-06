@@ -13,13 +13,24 @@ from behave_doctor.cli.formatters import format_report
 from behave_doctor.core import build_report
 from behave_doctor.graph.builder import build_graph
 from behave_doctor.graph.dot import to_dot
+from behave_doctor.impact import format_impact, impact_analysis
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.enums import Severity
 from behave_doctor.rules import get_all_rules, get_rule
 from behave_doctor.scanner.project_scanner import ScanError, scan_features
 from behave_doctor.scanner.step_scanner import scan_steps
 
-_KNOWN_COMMANDS = {"scan", "list-rules", "explain", "stats", "graph", "--help", "-h", "--version"}
+_KNOWN_COMMANDS = {
+    "scan",
+    "list-rules",
+    "explain",
+    "stats",
+    "graph",
+    "impact",
+    "--help",
+    "-h",
+    "--version",
+}
 
 app = typer.Typer(
     name="behave-doctor",
@@ -257,6 +268,53 @@ def graph(
     steps = scan_steps((project_path / cfg.steps_dir).resolve(), cfg)
     dep_graph = build_graph(project, steps)
     typer.echo(to_dot(dep_graph))
+
+
+@app.command()
+def impact(
+    changed_files: Annotated[
+        list[str] | None,
+        typer.Option("--changed-files", "-c", help="Changed files (paths to .py or .feature)."),
+    ] = None,
+    path: Annotated[Path, typer.Argument(help="Project root directory.")] = Path("."),
+    features_dir: Annotated[
+        str | None, typer.Option("--features-dir", help="Relative path to features directory.")
+    ] = None,
+    steps_dir: Annotated[
+        str | None, typer.Option("--steps-dir", help="Relative path to step definitions.")
+    ] = None,
+    config: Annotated[
+        str | None, typer.Option("--config", help="Path to config file (pyproject.toml).")
+    ] = None,
+    fmt: Annotated[
+        str,
+        typer.Option("--format", help="Output format: text, json, names."),
+    ] = "text",
+    output: Annotated[
+        str | None, typer.Option("--output", "-o", help="Write to file instead of stdout.")
+    ] = None,
+) -> None:
+    """Analyse which scenarios are affected by changed files."""
+    project_path = path.resolve()
+    cfg = _load_config(config, features_dir, steps_dir, project_path)
+
+    files = changed_files or []
+    try:
+        result = impact_analysis(project_path, files, cfg)
+    except FileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except ScanError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+        formatted = format_impact(result, fmt=fmt)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    _emit(formatted, output)
+    raise typer.Exit(code=0)
 
 
 def main(argv: list[str] | None = None) -> int:

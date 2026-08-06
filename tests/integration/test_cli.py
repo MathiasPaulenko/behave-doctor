@@ -141,7 +141,7 @@ def test_scan_default_path_is_cwd(
 def test_version_flag() -> None:
     code, out, _ = _run(["--version"])
     assert code == 0
-    assert "1.2.0" in out
+    assert "1.2.1" in out
 
 
 def test_main_returns_exit_code() -> None:
@@ -149,3 +149,114 @@ def test_main_returns_exit_code() -> None:
     code = main(["scan", str(SAMPLE_PROJECT), "--no-color"])
     assert isinstance(code, int)
     assert code in (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# impact subcommand
+# ---------------------------------------------------------------------------
+
+IMPACT_PROJECT = FIXTURES / "impact_project"
+
+
+def test_impact_text_output() -> None:
+    login_steps = str(IMPACT_PROJECT / "features" / "steps" / "login_steps.py")
+    code, out, _ = _run(["impact", str(IMPACT_PROJECT), "--changed-files", login_steps])
+    assert code == 0
+    assert "Impact analysis:" in out
+    assert "Affected scenarios" in out
+    assert "Successful login" in out
+    assert "Failed login" in out
+
+
+def test_impact_json_output() -> None:
+    login_steps = str(IMPACT_PROJECT / "features" / "steps" / "login_steps.py")
+    code, out, _ = _run(
+        [
+            "impact",
+            str(IMPACT_PROJECT),
+            "--changed-files",
+            login_steps,
+            "--format",
+            "json",
+        ]
+    )
+    assert code == 0
+    data = json.loads(out)
+    # 2 from login.feature + 2 from search.feature (via Background)
+    assert data["summary"]["scenarios_affected"] == 4
+    assert data["summary"]["changed_files"] == 1
+    names = {s["name"] for s in data["affected_scenarios"]}
+    assert "Successful login" in names
+    assert "Failed login" in names
+    assert "Search by keyword" in names
+    assert "Search with filter" in names
+
+
+def test_impact_names_output() -> None:
+    login_steps = str(IMPACT_PROJECT / "features" / "steps" / "login_steps.py")
+    code, out, _ = _run(
+        [
+            "impact",
+            str(IMPACT_PROJECT),
+            "--changed-files",
+            login_steps,
+            "--format",
+            "names",
+        ]
+    )
+    assert code == 0
+    names = [line for line in out.strip().split("\n") if line]
+    assert "Successful login" in names
+    assert "Failed login" in names
+    assert "Search by keyword" in names
+    assert "Search with filter" in names
+
+
+def test_impact_no_changed_files() -> None:
+    code, out, _ = _run(["impact", str(IMPACT_PROJECT)])
+    assert code == 0
+    assert "0 changed files" in out
+
+
+def test_impact_changed_feature_file() -> None:
+    checkout_feature = str(IMPACT_PROJECT / "features" / "checkout.feature")
+    code, out, _ = _run(["impact", str(IMPACT_PROJECT), "--changed-files", checkout_feature])
+    assert code == 0
+    assert "Add item to cart" in out
+    assert "Complete checkout" in out
+    assert "Successful login" not in out
+
+
+def test_impact_nonexistent_changed_file_exit_code() -> None:
+    code, _, _ = _run(["impact", str(IMPACT_PROJECT), "--changed-files", "/nonexistent.py"])
+    assert code == 1
+
+
+def test_impact_invalid_format_exit_code() -> None:
+    login_steps = str(IMPACT_PROJECT / "features" / "steps" / "login_steps.py")
+    code, _, _ = _run(
+        [
+            "impact",
+            str(IMPACT_PROJECT),
+            "--changed-files",
+            login_steps,
+            "--format",
+            "xml",
+        ]
+    )
+    assert code == 2
+
+
+def test_impact_relative_path_against_project() -> None:
+    """Regression: relative paths should resolve against project_path, not cwd."""
+    code, out, _ = _run(
+        [
+            "impact",
+            str(IMPACT_PROJECT),
+            "--changed-files",
+            "features/steps/login_steps.py",
+        ]
+    )
+    assert code == 0
+    assert "Successful login" in out
+    assert "Failed login" in out

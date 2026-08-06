@@ -14,6 +14,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from behave_doctor.core import build_report
+from behave_doctor.impact import (
+    AffectedScenario,
+    ChangedFile,
+    ImpactResult,
+    ImpactSummary,
+    format_impact,
+    impact_analysis,
+)
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.diagnostic import Diagnostic
@@ -23,7 +31,7 @@ from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.model.step_match import StepMatch
 from behave_doctor.rules.base import Rule
 
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
 
 def scan_project(
@@ -63,10 +71,14 @@ def scan_project(
 
 
 __all__ = [
+    "AffectedScenario",
     "Category",
+    "ChangedFile",
     "DependencyGraph",
     "Diagnostic",
     "DoctorConfig",
+    "ImpactResult",
+    "ImpactSummary",
     "ProjectReport",
     "ProjectStatistics",
     "Rule",
@@ -74,5 +86,7 @@ __all__ = [
     "StepDefinition",
     "StepMatch",
     "__version__",
+    "format_impact",
+    "impact_analysis",
     "scan_project",
 ]
