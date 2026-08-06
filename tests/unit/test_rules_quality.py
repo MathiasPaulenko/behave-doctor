@@ -4,11 +4,13 @@ from pathlib import Path
 
 from behave_model import Project
 
+from behave_doctor.graph.builder import build_graph
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.enums import Category, Severity
 from behave_doctor.rules.base import RuleContext
 from behave_doctor.rules.quality import (
+    AmbiguousStepMatch,
     DuplicateStepDefs,
     FeatureTooManyScenarios,
     InconsistentTagCasing,
@@ -131,3 +133,55 @@ def test_bd204_detects_inconsistent_tag_casing() -> None:
     variants = diag.metadata["variants"]
     assert "@SmokeTest" in variants
     assert "@smoke_test" in variants
+
+
+def test_bd205_detects_ambiguous_step_match() -> None:
+    """BD205 fires when a feature step matches multiple definitions."""
+    root = FIXTURES / "ambiguous_match_project"
+    project = scan_features(root, DoctorConfig())
+    steps = scan_steps(root / "features" / "steps", DoctorConfig())
+    graph = build_graph(project, steps)
+    ctx = RuleContext(
+        project=project,
+        step_definitions=steps,
+        dependency_graph=graph,
+        config=DoctorConfig(),
+    )
+    diagnostics = AmbiguousStepMatch().check(ctx)
+    assert len(diagnostics) == 1
+    diag = diagnostics[0]
+    assert diag.rule_id == "BD205"
+    assert diag.severity is Severity.ERROR
+    assert diag.category is Category.QUALITY
+    assert "Ambiguous step match" in diag.message
+
+
+def test_bd205_no_false_positives_on_clean_project(tmp_path: Path) -> None:
+    """BD205 does not fire when each step matches exactly one definition."""
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    (features_dir / "test.feature").write_text(
+        "Feature: Test\n\n  @smoke\n  Scenario: One\n    Given a step\n    Then a result\n",
+        encoding="utf-8",
+    )
+    steps_dir = features_dir / "steps"
+    steps_dir.mkdir()
+    (steps_dir / "steps.py").write_text(
+        "from behave import given, then\n\n"
+        '@given("a step")\n'
+        "def g(): pass\n\n"
+        '@then("a result")\n'
+        "def t(): pass\n",
+        encoding="utf-8",
+    )
+    project = scan_features(tmp_path, DoctorConfig())
+    step_defs = scan_steps(steps_dir, DoctorConfig())
+    graph = build_graph(project, step_defs)
+    ctx = RuleContext(
+        project=project,
+        step_definitions=step_defs,
+        dependency_graph=graph,
+        config=DoctorConfig(),
+    )
+    diagnostics = AmbiguousStepMatch().check(ctx)
+    assert diagnostics == []

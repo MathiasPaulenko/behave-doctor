@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Protocol
 
 from behave_doctor.model.project_report import ProjectReport
+from behave_doctor.reporters.json_reporter import JsonReporter
+from behave_doctor.reporters.sarif import SarifReporter
 from behave_doctor.reporters.text import TextReporter
 
 
@@ -16,4 +18,4 @@ class Reporter(Protocol):
         ...
 
 
-__all__ = ["Reporter", "TextReporter"]
+__all__ = ["JsonReporter", "Reporter", "SarifReporter", "TextReporter"]

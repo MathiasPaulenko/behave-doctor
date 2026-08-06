@@ -1,4 +1,4 @@
-# Quality Rules (BD201-204)
+# Quality Rules (BD201-205)
 
 Detect suite quality issues: duplicate definitions, missing tags, oversized
 features, and inconsistent tag casing. These rules catch problems that lead
@@ -181,3 +181,47 @@ conventions:
 - `@smoke-test` — kebab-case.
 
 Use a project-wide tag convention document and enforce it in code review.
+
+---
+
+## BD205 — ambiguous-step-match
+
+Finds feature steps that match multiple step definitions. Behave raises
+`AmbiguousStepError` at runtime when a step text matches more than one
+definition, halting the scenario.
+
+| Attribute    | Value          |
+| ------------ | -------------- |
+| Severity     | error          |
+| Category     | Quality        |
+| Configurable | No             |
+
+### What it detects
+
+A step matches multiple definitions when a universal `@step` definition
+overlaps with a keyword-specific definition (`@given`, `@when`, `@then`)
+for the same pattern:
+
+```python
+# features/steps/auth.py
+@given('a user named "{name}"')
+def given_user_named(context, name):
+    ...
+
+@step('a user named "{name}"')  # overlaps with @given!
+def step_user_named(context, name):
+    ...
+```
+
+### Example output
+
+```text
+BD205  ERROR  Ambiguous step match: "Given a user named \"Alice\""
+        (features/auth.feature:4)
+```
+
+### How to fix
+
+Remove one of the conflicting definitions. If both are needed, differentiate
+them by using keyword-specific decorators (`@given`, `@when`) instead of the
+universal `@step`, or adjust the patterns so they don't overlap.

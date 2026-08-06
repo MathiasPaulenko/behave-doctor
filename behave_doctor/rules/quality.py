@@ -1,8 +1,9 @@
-"""Quality rules (BD201-204) — suite quality issues."""
+"""Quality rules (BD201-205) — suite quality issues."""
 
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from behave_doctor.model import (
     all_project_tags,
@@ -170,6 +171,43 @@ class InconsistentTagCasing(Rule):
                     category=self.category,
                     message=(f"Inconsistent tag casing for {normalized!r}: {sorted(variants)}"),
                     metadata={"variants": sorted(variants)},
+                )
+            )
+        return diagnostics
+
+
+@register
+class AmbiguousStepMatch(Rule):
+    """BD205: feature steps that match multiple step definitions.
+
+    Behave raises ``AmbiguousStepError`` at runtime when a step text matches
+    more than one definition. This rule detects the conflict statically so it
+    can be fixed before running the suite.
+    """
+
+    id = "BD205"
+    name = "ambiguous-step-match"
+    severity = Severity.ERROR
+    category = Category.QUALITY
+    description = "Step matches multiple definitions (AmbiguousStepError at runtime)."
+
+    def check(self, context: RuleContext) -> list[Diagnostic]:
+        diagnostics: list[Diagnostic] = []
+        for match in context.dependency_graph.step_matches:
+            if not match.ambiguous:
+                continue
+            step: Any = match.step
+            location = step.location
+            diagnostics.append(
+                Diagnostic(
+                    rule_id=self.id,
+                    rule_name=self.name,
+                    severity=self.severity,
+                    category=self.category,
+                    message=f'Ambiguous step match: "{step.full_text}"',
+                    file=location_path(location),
+                    line=location_line(location),
+                    metadata={"step": step.name},
                 )
             )
         return diagnostics
