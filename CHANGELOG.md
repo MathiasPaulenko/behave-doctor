@@ -7,13 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-02
+
 ### Added
 
 - **BD205 — ambiguous-step-match**: New quality rule that detects feature steps
-  matching multiple step definitions, which would cause `AmbiguousStepError` at
-  runtime.
+  matching multiple step definitions (Behave picks the first registered match
+  silently, so the executed behaviour depends on module import order).
+- **BD305 — unparseable-feature**: New coverage rule that reports feature files
+  which fail to parse (they would abort the whole suite at runtime and were
+  previously skipped silently).
 - **Reporter exports**: `JsonReporter` and `SarifReporter` are now exported from
   `behave_doctor.reporters` alongside `TextReporter`.
+
+### Fixed
+
+- **Step matcher selection**: `use_step_matcher()` / `use_default_step_matcher()`
+  calls are now honoured in source order, and patterns are compiled with
+  Behave's own matcher classes (`parse`, `cfparse`, `re`, `re0`) — regex
+  definitions that used `use_step_matcher("re")` were previously reported as
+  undefined/unused.
+- **Title-case decorators**: `@Given`, `@When`, `@Then`, and `@Step` are now
+  recognised as step decorators.
+- **Anonymous placeholders**: `{` + `}` in parse patterns now match correctly.
+- **Localised features**: `# language: xx` files resolve `And`/`But`/`*` and
+  primary keywords via Behave's i18n tables.
+- **`Rule:` blocks**: Rule-level backgrounds are matched and rule tags are
+  inherited by their scenarios (Gherkin v6).
+- **Step-type inheritance**: Leading `And`/`But` inherit the last Background
+  step type; a leading `*` defaults to `given`, matching the runtime parser.
+- **Tag inheritance**: BD202 and BD304 now consider feature- and rule-level
+  tags when computing effective scenario tags.
+- **Impact analysis**: Rule backgrounds are matched per scenario, changes to
+  modules transitively imported by step modules propagate, and a changed
+  `environment.py` marks all scenarios as affected.
+- **CLI**: Unknown options now print a clean error message instead of a
+  traceback.
+- **SARIF**: Diagnostics without a file now omit `locations` instead of
+  emitting an empty `uri`.
+- **Dependencies**: `behave>=1.3.0` is now a direct dependency.
 
 ## [1.3.0] - 2026-08-07
 

@@ -31,7 +31,7 @@ from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.model.step_match import StepMatch
 from behave_doctor.rules.base import Rule
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 
 def scan_project(
