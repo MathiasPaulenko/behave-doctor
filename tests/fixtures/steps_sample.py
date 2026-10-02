@@ -1,5 +1,5 @@
 import behave
-from behave import given, when, then, step
+from behave import given, step, then, use_step_matcher, when
 
 
 @given("the user is logged in")
@@ -17,14 +17,23 @@ def then_cart_contains(n):
     pass
 
 
-@step("re:the order (is|is not) confirmed")
+use_step_matcher("re")
+
+
+@step("the order (is|is not) confirmed")
 def step_order_confirmed():
     pass
 
 
-@given("a product with converter", converter=int)
+use_step_matcher("cfparse")
+
+
+@given("a product with {amount:Number} converters")
 def given_product_with_converter():
     pass
+
+
+use_step_matcher("parse")
 
 
 @behave.given("the user is on the login page")

@@ -73,17 +73,18 @@ class SarifReporter:
             except ValueError:
                 uri = diag.file.as_posix()
 
-        location: dict[str, Any] = {
-            "physicalLocation": {
-                "artifactLocation": {"uri": uri or ""},
-            }
-        }
-        if diag.line is not None:
-            location["physicalLocation"]["region"] = {"startLine": diag.line}
-
-        return {
+        result: dict[str, Any] = {
             "ruleId": diag.rule_id,
             "level": _SEVERITY_TO_LEVEL[diag.severity],
             "message": {"text": diag.message},
-            "locations": [location],
         }
+        if uri:
+            location: dict[str, Any] = {
+                "physicalLocation": {
+                    "artifactLocation": {"uri": uri},
+                }
+            }
+            if diag.line is not None:
+                location["physicalLocation"]["region"] = {"startLine": diag.line}
+            result["locations"] = [location]
+        return result

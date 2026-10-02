@@ -6,6 +6,6 @@ def given_user_logged_in():
     pass
 
 
-@given("THE USER IS LOGGED IN")
+@given("the user is logged in")
 def given_user_logged_in_dup():
     pass

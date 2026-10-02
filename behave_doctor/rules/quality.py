@@ -8,6 +8,7 @@ from typing import Any
 from behave_doctor.model import (
     all_project_tags,
     feature_scenario_count,
+    iter_feature_scenarios,
     scenario_tags,
     tag_name,
 )
@@ -36,9 +37,11 @@ class DuplicateStepDefs(Rule):
     description = "Same pattern registered multiple times."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
+        # Behave's registry is case-sensitive: two patterns that differ only
+        # in case are distinct definitions, not duplicates.
         groups: dict[str, list[StepDefinition]] = defaultdict(list)
         for definition in context.step_definitions:
-            groups[definition.pattern.lower()].append(definition)
+            groups[definition.pattern].append(definition)
 
         def _conflict(a: StepDefinition, b: StepDefinition) -> bool:
             if a.keyword == "step" or b.keyword == "step":
@@ -80,12 +83,19 @@ class ScenarioNoTags(Rule):
     name = "scenario-no-tags"
     severity = Severity.WARNING
     category = Category.QUALITY
-    description = "Scenario has no tags."
+    description = "Scenario has no effective tags (own, feature, rule, or examples)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         diagnostics: list[Diagnostic] = []
-        for scenario in context.project.all_scenarios():
-            if not scenario_tags(scenario):
+        for feature in context.project.features:
+            inherited = list(feature.tags)
+            for scenario, rule in iter_feature_scenarios(feature):
+                effective = scenario_tags(scenario)
+                if rule is not None:
+                    effective += rule.tags
+                effective += inherited
+                if effective:
+                    continue
                 location = scenario.location
                 diagnostics.append(
                     Diagnostic(
@@ -180,16 +190,16 @@ class InconsistentTagCasing(Rule):
 class AmbiguousStepMatch(Rule):
     """BD205: feature steps that match multiple step definitions.
 
-    Behave raises ``AmbiguousStepError`` at runtime when a step text matches
-    more than one definition. This rule detects the conflict statically so it
-    can be fixed before running the suite.
+    Behave does not error at runtime for this — it silently picks the first
+    registered match, so the executed behaviour depends on module import
+    order. Flagging the conflict statically surfaces that fragility.
     """
 
     id = "BD205"
     name = "ambiguous-step-match"
     severity = Severity.ERROR
     category = Category.QUALITY
-    description = "Step matches multiple definitions (AmbiguousStepError at runtime)."
+    description = "Step matches multiple definitions; Behave picks the first registered."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         diagnostics: list[Diagnostic] = []

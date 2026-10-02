@@ -16,9 +16,8 @@ def _build() -> object:
     return build_graph(project, steps)
 
 
-def test_normalize_step_text_strips_keyword() -> None:
-    assert normalize_step_text("Given the user is logged in") == "the user is logged in"
-    assert normalize_step_text("  And   multiple   spaces ") == "multiple spaces"
+def test_normalize_step_text_collapses_whitespace() -> None:
+    assert normalize_step_text("  the user  is logged in ") == "the user is logged in"
 
 
 def test_exact_match() -> None:
@@ -133,3 +132,73 @@ def test_keyword_aware_step_matching(tmp_path: Path) -> None:
     assert len(graph.step_matches) == 3
     assert not any(m.step_definition is None for m in graph.step_matches)
     assert not any(m.ambiguous for m in graph.step_matches)
+
+
+def test_match_step_ignores_raising_matcher() -> None:
+    """A matcher that raises during match() is treated as no-match."""
+    from behave_doctor.graph.builder import _match_step
+    from behave_doctor.model.step_definition import StepDefinition
+
+    class RaisingMatcher:
+        def match(self, text: str):
+            raise RuntimeError("boom")
+
+    class FakeStep:
+        name = "a step"
+        step_type = "given"
+
+    definition = StepDefinition(
+        keyword="given",
+        pattern="a step",
+        matcher=RaisingMatcher(),
+        matcher_type="parse",
+        file=Path("steps.py"),
+        line=1,
+        function_name="f",
+        module="s",
+    )
+    match = _match_step(FakeStep(), [definition])
+    assert match.step_definition is None
+
+
+def test_resolve_step_type_unknown_keyword_falls_back() -> None:
+    """Unknown keywords keep the previous step type (defensive fallback)."""
+    from behave_doctor.graph.builder import _resolve_step_type
+
+    assert _resolve_step_type("Weird", "given", {}) == "given"
+    assert _resolve_step_type("Weird", None, {}) is None
+    assert _resolve_step_type("*", None, {}) == "given"
+    assert _resolve_step_type("*", "when", {}) == "when"
+
+
+def test_extract_module_imports_relative_beyond_root(tmp_path: Path) -> None:
+    """Relative imports escaping the steps directory resolve to None."""
+    from behave_doctor.graph.builder import _extract_module_imports
+
+    py = tmp_path / "x.py"
+    py.write_text(
+        "from ....... import too_deep\nfrom . import *\nfrom . import ok\n",
+        encoding="utf-8",
+    )
+    imports = _extract_module_imports(py, "x")
+    # The too-deep import and the star import are skipped; `ok` resolves.
+    assert imports == {"ok"}
+
+
+def test_build_graph_unnamed_feature(tmp_path: Path) -> None:
+    """A feature with no name falls back to '<unnamed>'."""
+    from types import SimpleNamespace
+
+    from behave_doctor.graph.builder import build_graph
+
+    feature = SimpleNamespace(
+        name="",
+        location=SimpleNamespace(filename=""),
+        background=None,
+        scenarios=[],
+        rules=[],
+        language="en",
+    )
+    project = SimpleNamespace(features=[feature])
+    graph = build_graph(project, [])
+    assert graph.feature_steps == {}

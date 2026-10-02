@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from behave_doctor.model import all_project_tags, scenario_tag_sets, tag_name
+from behave_doctor.model import (
+    all_project_tags,
+    iter_feature_scenarios,
+    scenario_tag_sets,
+    tag_name,
+)
 from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
 from behave_doctor.model.location import location_line, location_path
@@ -77,6 +82,37 @@ class UndefinedStep(Rule):
 
 
 @register
+class UnparseableFeature(Rule):
+    """BD305: feature files that could not be parsed and were skipped.
+
+    Behave aborts the run when a feature file fails to parse, so a file that
+    is silently skipped here would break the suite at runtime — and every
+    scenario it contains is invisible to all other rules.
+    """
+
+    id = "BD305"
+    name = "unparseable-feature"
+    severity = Severity.ERROR
+    category = Category.COVERAGE
+    description = "Feature file could not be parsed; its scenarios were skipped."
+
+    def check(self, context: RuleContext) -> list[Diagnostic]:
+        return [
+            Diagnostic(
+                rule_id=self.id,
+                rule_name=self.name,
+                severity=self.severity,
+                category=self.category,
+                message=f"Could not parse feature file: {error}",
+                file=file,
+                suggestion="Fix the Gherkin syntax; Behave will fail to load this file.",
+                metadata={"error": error},
+            )
+            for file, error in context.scan_errors
+        ]
+
+
+@register
 class UnusedTag(Rule):
     """BD303: tags that appear only once in the entire project."""
 
@@ -84,7 +120,7 @@ class UnusedTag(Rule):
     name = "unused-tag"
     severity = Severity.INFO
     category = Category.COVERAGE
-    description = "Tag defined but never used in CI filters."
+    description = "Tag is used only once in the project."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
         excluded = {t.lstrip("@") for t in context.config.exclude_tags}
@@ -122,15 +158,19 @@ class OrphanScenario(Rule):
     description = "Scenario never selected by any tag filter (all tags unique)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        # Build effective tag sets for each generated scenario. Feature-level tags are
-        # inherited by every generated scenario in Behave tag filters. Scenario Outlines
-        # are expanded into one entry per example row so tag usage is counted correctly.
+        # Build effective tag sets for each generated scenario. Feature-level
+        # tags — and Rule-level tags for scenarios inside ``Rule:`` blocks —
+        # are inherited by every generated scenario in Behave tag filters.
+        # Scenario Outlines are expanded into one entry per example row so tag
+        # usage is counted correctly.
         entries: list[tuple[Any, list[set[str]]]] = []
         for feature in context.project.features:
             featuretag_names = {tag_name(t) for t in feature.tags}
-            for scenario in feature.all_scenarios():
+            for scenario, rule in iter_feature_scenarios(feature):
+                ruletag_names = {tag_name(t) for t in rule.tags} if rule is not None else set()
+                inherited = featuretag_names | ruletag_names
                 tag_sets = [
-                    {tag_name(t) for t in tag_set} | featuretag_names
+                    {tag_name(t) for t in tag_set} | inherited
                     for tag_set in scenario_tag_sets(scenario)
                 ]
                 entries.append((scenario, tag_sets))

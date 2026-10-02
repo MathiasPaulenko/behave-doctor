@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
+
+from behave.matchers import ParseMatcher
 
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.model.step_match import StepMatch
 
 
+def _stub() -> None:
+    pass
+
+
 def _make_def(function_name: str = "user_logged_in") -> StepDefinition:
     return StepDefinition(
         keyword="given",
         pattern="the user is logged in",
-        pattern_compiled=re.compile("the user is logged in"),
+        matcher=ParseMatcher(_stub, "the user is logged in"),
         matcher_type="parse",
         file=Path("steps/auth.py"),
         line=10,

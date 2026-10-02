@@ -343,3 +343,101 @@ class TestFormatImpact:
     def test_whitespace_format_raises_valueerror(self, sample_result: ImpactResult) -> None:
         with pytest.raises(ValueError, match="non-empty string"):
             format_impact(sample_result, "   ")
+
+
+# ---------------------------------------------------------------------------
+# impact_analysis — transitive module impact, environment.py, rule backgrounds
+# ---------------------------------------------------------------------------
+
+
+def _write_project(tmp_path: Path) -> Path:
+    """Minimal project: two scenarios, one step module importing a helper."""
+    steps = tmp_path / "features" / "steps"
+    steps.mkdir(parents=True)
+    (tmp_path / "features" / "f.feature").write_text(
+        "Feature: f\n"
+        "  Scenario: login\n"
+        "    Given the user is logged in\n"
+        "  Scenario: other\n"
+        "    Given unrelated step\n",
+        encoding="utf-8",
+    )
+    (steps / "s.py").write_text(
+        "from behave import given\nimport helpers\n"
+        '@given("the user is logged in")\ndef g(ctx): pass\n'
+        '@given("unrelated step")\ndef h(ctx): pass\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "helpers.py").write_text("X = 1\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_transitive_helper_module_change(tmp_path: Path) -> None:
+    """A changed helper module affects step modules that import it."""
+    project = _write_project(tmp_path)
+    result = impact_analysis(project, [project / "helpers.py"])
+    names = {s.name for s in result.affected_scenarios}
+    assert names == {"login", "other"}
+
+
+def test_unrelated_module_change_affects_nothing(tmp_path: Path) -> None:
+    project = _write_project(tmp_path)
+    (project / "unrelated.py").write_text("Y = 1\n", encoding="utf-8")
+    result = impact_analysis(project, [project / "unrelated.py"])
+    assert result.affected_scenarios == []
+
+
+def test_environment_py_affects_all_scenarios(tmp_path: Path) -> None:
+    """environment.py hooks run for every scenario — a change affects all."""
+    project = _write_project(tmp_path)
+    env = project / "features" / "environment.py"
+    env.write_text("def before_all(context): pass\n", encoding="utf-8")
+    result = impact_analysis(project, [env])
+    names = {s.name for s in result.affected_scenarios}
+    assert names == {"login", "other"}
+
+
+def test_changed_init_py_maps_to_package(tmp_path: Path) -> None:
+    """A changed ``__init__.py`` maps to the package's dotted name."""
+    project = _write_project(tmp_path)
+    pkg = project / "helpers_pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("X = 1\n", encoding="utf-8")
+    (project / "features" / "steps" / "s.py").write_text(
+        "from behave import given\nimport helpers_pkg\n"
+        '@given("the user is logged in")\ndef g(ctx): pass\n'
+        '@given("unrelated step")\ndef h(ctx): pass\n',
+        encoding="utf-8",
+    )
+    result = impact_analysis(project, [pkg / "__init__.py"])
+    names = {s.name for s in result.affected_scenarios}
+    assert names == {"login", "other"}
+
+
+def test_rule_background_impact(tmp_path: Path) -> None:
+    """A change to a definition used only in a Rule Background affects the
+    rule's scenarios."""
+    steps = tmp_path / "features" / "steps"
+    steps.mkdir(parents=True)
+    (tmp_path / "features" / "f.feature").write_text(
+        "Feature: f\n"
+        "  Rule: r\n"
+        "    Background:\n"
+        "      Given rule bg\n"
+        "    Scenario: in rule\n"
+        "      Given x\n"
+        "  Scenario: outside\n"
+        "    Given x\n",
+        encoding="utf-8",
+    )
+    (steps / "s.py").write_text(
+        "from behave import given\n"
+        '@given("rule bg")\ndef a(ctx): pass\n'
+        '@given("x")\ndef b(ctx): pass\n',
+        encoding="utf-8",
+    )
+    result = impact_analysis(tmp_path, [steps / "s.py"])
+    names = {s.name for s in result.affected_scenarios}
+    # Changing s.py affects defs a and b → both scenarios (rule bg used by
+    # "in rule"; "x" used by both).
+    assert names == {"in rule", "outside"}

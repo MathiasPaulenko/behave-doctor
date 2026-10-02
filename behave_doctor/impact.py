@@ -25,7 +25,12 @@ from typing import Any
 
 from behave_model import Project
 
-from behave_doctor.graph.builder import _attach_step_types, _match_step
+from behave_doctor.graph.builder import (
+    _attach_step_types,
+    _extract_module_imports,
+    _match_step,
+    _step_keyword_map,
+)
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.location import location_line, location_path
 from behave_doctor.model.step_definition import StepDefinition
@@ -176,13 +181,74 @@ def _resolve_changed_files(
     return py_files, feature_files
 
 
+def _matched_patterns(steps: list[Any], step_definitions: list[StepDefinition]) -> list[str]:
+    """Match ``steps`` against definitions and return the matched patterns."""
+    patterns: list[str] = []
+    for step in steps:
+        match = _match_step(step, step_definitions)
+        if match.step_definition is not None:
+            patterns.append(match.step_definition.pattern)
+    return patterns
+
+
+def _module_name_candidates(path: Path, root: Path, steps_path: Path) -> set[str]:
+    """Return the dotted module names ``path`` could be imported as.
+
+    Step files resolve relative to the steps directory; helper modules
+    (``environment.py``, support code, shared fixtures) resolve relative to
+    the project root.
+    """
+    names: set[str] = set()
+    for base in (steps_path, root):
+        try:
+            relative = path.relative_to(base)
+        except ValueError:
+            continue
+        parts = list(relative.with_suffix("").parts)
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+        if parts:
+            names.add(".".join(parts))
+    return names
+
+
+def _affected_modules(
+    changed_py: list[Path],
+    module_imports: dict[str, set[str]],
+    root: Path,
+    steps_path: Path,
+) -> set[str]:
+    """Return step modules affected by the changed ``.py`` files.
+
+    A module is affected if it is itself changed, or if it transitively
+    imports a changed module — a changed helper module changes the behaviour
+    of every step module importing it.
+    """
+    changed: set[str] = set()
+    for path in changed_py:
+        changed.update(_module_name_candidates(path, root, steps_path))
+    changed &= set(module_imports.keys()) | {
+        target for targets in module_imports.values() for target in targets
+    }
+
+    affected: set[str] = set(changed)
+    while True:
+        grown = {module for module, targets in module_imports.items() if targets & affected}
+        if grown <= affected:
+            return affected
+        affected |= grown
+
+
 def _find_affected_definitions(
     step_definitions: list[StepDefinition],
     changed_py: list[Path],
+    affected_modules: set[str],
 ) -> set[str]:
-    """Return the set of ``def_id``s whose source file is in ``changed_py``."""
+    """Return ``def_id``s whose file changed or whose module is transitively affected."""
     changed_set = set(changed_py)
-    return {d.def_id for d in step_definitions if d.file in changed_set}
+    return {
+        d.def_id for d in step_definitions if d.file in changed_set or d.module in affected_modules
+    }
 
 
 def _build_scenario_index(
@@ -194,37 +260,56 @@ def _build_scenario_index(
     For each scenario in the project, matches every step against the
     definitions and records which patterns matched.  Scenario Outlines are
     matched using their template steps (not expanded rows) since the scenario
-    name is what matters for ``behave --name``.
+    name is what matters for ``behave --name``.  Scenarios inside ``Rule:``
+    blocks see the rule's background in addition to the feature background,
+    as Behave does at runtime.
     """
     index: list[tuple[str, int, str, list[str]]] = []
     for feature in project.features:
         fpath = _feature_file_path(feature)
+        keyword_map = _step_keyword_map(getattr(feature, "language", None))
 
-        # Match background steps once per feature — they are the same for
-        # every scenario and don't need to be re-matched per scenario.
-        bg_matched_patterns: list[str] = []
+        bg_patterns: list[str] = []
+        last_bg_type: str | None = None
         if feature.background:
-            bg_steps = _attach_step_types(list(feature.background.steps))
-            for step in bg_steps:
-                match = _match_step(step, step_definitions)
-                if match.step_definition is not None:
-                    bg_matched_patterns.append(match.step_definition.pattern)
+            bg_steps = _attach_step_types(list(feature.background.steps), keyword_map)
+            bg_patterns = _matched_patterns(bg_steps, step_definitions)
+            if bg_steps:
+                last_bg_type = getattr(bg_steps[-1], "step_type", None)
 
-        for scenario in feature.all_scenarios():
-            name = getattr(scenario, "name", "") or ""
-            line = _scenario_line(scenario)
-            matched_patterns: list[str] = list(bg_matched_patterns)
+        for scenario in getattr(feature, "scenarios", []):
+            steps = _attach_step_types(
+                list(getattr(scenario, "steps", [])), keyword_map, last_bg_type
+            )
+            patterns = bg_patterns + _matched_patterns(steps, step_definitions)
+            index.append(
+                (fpath, _scenario_line(scenario), getattr(scenario, "name", "") or "", patterns)
+            )
 
-            # Collect steps for this scenario (not expanded — we want the
-            # template steps for Scenario Outlines).
-            raw_steps = list(getattr(scenario, "steps", []))
-            steps = _attach_step_types(raw_steps)
-            for step in steps:
-                match = _match_step(step, step_definitions)
-                if match.step_definition is not None:
-                    matched_patterns.append(match.step_definition.pattern)
-
-            index.append((fpath, line, name, matched_patterns))
+        for rule in getattr(feature, "rules", []) or []:
+            rule_bg_last = last_bg_type
+            rule_bg_patterns = list(bg_patterns)
+            rule_background = getattr(rule, "background", None)
+            if rule_background:
+                rb_steps = _attach_step_types(
+                    list(rule_background.steps), keyword_map, last_bg_type
+                )
+                rule_bg_patterns += _matched_patterns(rb_steps, step_definitions)
+                if rb_steps:
+                    rule_bg_last = getattr(rb_steps[-1], "step_type", None)
+            for scenario in getattr(rule, "scenarios", []):
+                steps = _attach_step_types(
+                    list(getattr(scenario, "steps", [])), keyword_map, rule_bg_last
+                )
+                patterns = rule_bg_patterns + _matched_patterns(steps, step_definitions)
+                index.append(
+                    (
+                        fpath,
+                        _scenario_line(scenario),
+                        getattr(scenario, "name", "") or "",
+                        patterns,
+                    )
+                )
     return index
 
 
@@ -282,8 +367,21 @@ def impact_analysis(
         count = sum(1 for d in step_definitions if d.file == f)
         changed_file_entries.append(ChangedFile(path=str(f), step_definitions=count))
 
+    # -- TRANSITIVE IMPACT: a changed helper module affects every step module
+    # that imports it, directly or transitively.
+    module_imports: dict[str, set[str]] = {}
+    for definition in step_definitions:
+        if definition.module not in module_imports:
+            module_imports[definition.module] = _extract_module_imports(
+                definition.file, definition.module
+            )
+    affected_modules = _affected_modules(changed_py, module_imports, root, steps_path)
+
+    # environment.py hooks run for every scenario — a change there affects all.
+    env_changed = any(f.name == "environment.py" for f in changed_py)
+
     # Find affected step definition IDs from changed .py files.
-    affected_def_ids = _find_affected_definitions(step_definitions, changed_py)
+    affected_def_ids = _find_affected_definitions(step_definitions, changed_py, affected_modules)
 
     # Build the scenario index.
     scenario_index = _build_scenario_index(project, step_definitions)
@@ -308,8 +406,9 @@ def impact_analysis(
             hits = set(matched_patterns) & affected_patterns
             if hits:
                 affected.setdefault(key, set()).update(hits)
-        # Check .feature impact — all scenarios in a changed feature file.
-        if Path(fpath).resolve() in changed_feature_set:
+        # Check .feature impact — all scenarios in a changed feature file —
+        # and a changed environment.py, which affects every scenario.
+        if Path(fpath).resolve() in changed_feature_set or env_changed:
             affected.setdefault(key, set()).update(matched_patterns)
 
     # Build sorted, deduplicated AffectedScenario list.

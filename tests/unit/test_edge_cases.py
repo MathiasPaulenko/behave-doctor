@@ -16,9 +16,18 @@ from behave_doctor.reporters.json_reporter import JsonReporter
 from behave_doctor.reporters.sarif import SarifReporter
 from behave_doctor.reporters.text import TextReporter
 from behave_doctor.scanner import scan_features
-from behave_doctor.scanner.step_scanner import _compile_parse_pattern, scan_steps
+from behave_doctor.scanner.step_scanner import scan_steps
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
+
+
+def _parse_matcher(pattern: str):
+    from behave.matchers import ParseMatcher
+
+    def _stub() -> None:
+        pass
+
+    return ParseMatcher(_stub, pattern)
 
 
 # --- Issue 8: .match() vs .fullmatch() — partial match false positives ---
@@ -26,9 +35,9 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 def test_fullmatch_prevents_partial_match_for_exact_pattern() -> None:
     """An exact step pattern must not match a longer step text."""
-    compiled = _compile_parse_pattern("the user is logged in")
-    assert compiled.fullmatch("the user is logged in") is not None
-    assert compiled.fullmatch("the user is logged in and more") is None
+    matcher = _parse_matcher("the user is logged in")
+    assert matcher.matches("the user is logged in")
+    assert not matcher.matches("the user is logged in and more")
 
 
 def test_match_step_uses_fullmatch_not_match() -> None:
@@ -36,11 +45,12 @@ def test_match_step_uses_fullmatch_not_match() -> None:
 
     class FakeStep:
         name = "the user is logged in and does more"
+        step_type = "given"
 
     definition = StepDefinition(
         keyword="given",
         pattern="the user is logged in",
-        pattern_compiled=_compile_parse_pattern("the user is logged in"),
+        matcher=_parse_matcher("the user is logged in"),
         matcher_type="parse",
         file=Path("steps.py"),
         line=1,
@@ -339,7 +349,8 @@ def test_sarif_reporter_with_no_file() -> None:
 
     data = json.loads(out)
     result = data["runs"][0]["results"][0]
-    assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == ""
+    # Diagnostics without a file omit "locations" entirely (SARIF-valid).
+    assert "locations" not in result
 
 
 # --- Text reporter edge cases ---
@@ -420,20 +431,18 @@ def test_text_reporter_location_with_only_file() -> None:
 # --- normalize_step_text edge cases ---
 
 
-def test_normalize_step_text_star_keyword() -> None:
-    """The * keyword (with space) should be stripped."""
-    assert normalize_step_text("* the user does something") == "the user does something"
+def test_normalize_step_text_collapses_whitespace() -> None:
+    """Step names never contain the keyword; only whitespace is normalised."""
+    assert normalize_step_text("  multiple   spaces ") == "multiple spaces"
 
 
 def test_normalize_step_text_empty_string() -> None:
     assert normalize_step_text("") == ""
 
 
-def test_normalize_step_text_only_keyword() -> None:
-    assert normalize_step_text("Given") == ""
-
-
-def test_normalize_step_text_no_keyword() -> None:
+def test_normalize_step_text_no_keyword_stripping() -> None:
+    """A step text that starts with a word like 'And' is kept verbatim."""
+    assert normalize_step_text("And again") == "And again"
     assert normalize_step_text("the user is logged in") == "the user is logged in"
 
 
@@ -791,18 +800,13 @@ def test_bd403_handles_unreadable_file(tmp_path: Path) -> None:
 
 
 def test_normalize_step_text_with_tabs() -> None:
-    """Tabs between keyword and step text should be handled, not just spaces."""
-    assert normalize_step_text("Given\tthe user\tdoes something") == "the user does something"
-
-
-def test_normalize_step_text_tab_only_after_keyword() -> None:
-    """A tab immediately after the keyword should trigger keyword stripping."""
-    assert normalize_step_text("Given\tstep") == "step"
+    """Tabs in step text are collapsed to single spaces."""
+    assert normalize_step_text("the user\tdoes something") == "the user does something"
 
 
 def test_normalize_step_text_mixed_tabs_and_spaces() -> None:
     """Mixed tabs and spaces should all be collapsed."""
-    assert normalize_step_text("Given  \t  the user") == "the user"
+    assert normalize_step_text("the  \t  user") == "the user"
 
 
 # --- JSON reporter with non-serializable metadata ---

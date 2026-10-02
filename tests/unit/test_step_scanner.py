@@ -41,18 +41,21 @@ def test_handles_aliased_imports(tmp_path: Path) -> None:
     assert all(d.keyword in {"given", "when"} for d in defs)
 
 
-def test_re_prefix_detected(tmp_path: Path) -> None:
+def test_re_matcher_via_use_step_matcher(tmp_path: Path) -> None:
+    """``use_step_matcher("re")`` switches subsequent definitions to regex."""
     defs = _scan_fixture("steps_sample.py", tmp_path)
     re_defs = [d for d in defs if d.matcher_type == "re"]
     assert len(re_defs) == 1
-    assert re_defs[0].pattern.startswith("re:")
+    assert re_defs[0].pattern == "the order (is|is not) confirmed"
+    assert re_defs[0].matcher.matches("the order is confirmed")
 
 
-def test_converter_kwarg_detected(tmp_path: Path) -> None:
+def test_cfparse_matcher_via_use_step_matcher(tmp_path: Path) -> None:
+    """``use_step_matcher("cfparse")`` switches subsequent definitions."""
     defs = _scan_fixture("steps_sample.py", tmp_path)
     cf_defs = [d for d in defs if d.matcher_type == "cfparse"]
     assert len(cf_defs) == 1
-    assert cf_defs[0].pattern == "a product with converter"
+    assert cf_defs[0].pattern == "a product with {amount:Number} converters"
 
 
 def test_function_name_and_line_extracted(tmp_path: Path) -> None:
@@ -155,14 +158,14 @@ def test_pattern_keyword_argument_detected(tmp_path: Path) -> None:
 
 
 def test_typed_parse_placeholder_detected(tmp_path: Path) -> None:
-    """Parse/cfparse patterns with {name:type} placeholders must be compiled
+    """Parse patterns with {name:type} placeholders must be compiled
     and their parameters extracted."""
     steps = tmp_path / "steps"
     steps.mkdir()
     (steps / "typed.py").write_text(
         "from behave import given, when\n"
         "\n"
-        '@given("I have {n:d} items", converter=lambda x: int(x))\n'
+        '@given("I have {n:d} items")\n'
         "def step_count(n):\n"
         "    pass\n"
         "\n"
@@ -175,6 +178,90 @@ def test_typed_parse_placeholder_detected(tmp_path: Path) -> None:
     by_pattern = {d.pattern: d for d in defs}
     assert "I have {n:d} items" in by_pattern
     assert "n" in by_pattern["I have {n:d} items"].parameters
-    assert by_pattern["I have {n:d} items"].matcher_type == "cfparse"
+    assert by_pattern["I have {n:d} items"].matcher_type == "parse"
+    # The typed parameter must use real parse semantics: digits only.
+    assert by_pattern["I have {n:d} items"].matcher.matches("I have 3 items")
+    assert not by_pattern["I have {n:d} items"].matcher.matches("I have abc items")
     assert "name" in by_pattern["user {name} logs in"].parameters
-    assert by_pattern["user {name} logs in"].pattern_compiled.fullmatch("user Alice logs in")
+    assert by_pattern["user {name} logs in"].matcher.matches("user Alice logs in")
+
+
+def test_anonymous_placeholder_supported(tmp_path: Path) -> None:
+    """Anonymous ``{}`` placeholders are valid parse expressions."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "anon.py").write_text(
+        "from behave import given\n"
+        "\n"
+        '@given("the counter is at {}")\n'
+        "def step_counter(value):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert len(defs) == 1
+    assert defs[0].matcher.matches("the counter is at 3")
+
+
+def test_title_case_decorators_detected(tmp_path: Path) -> None:
+    """@Given/@When/@Then/@Step are valid Behave decorators too."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "title.py").write_text(
+        "from behave import Given, When, Then, Step\n"
+        "\n"
+        '@Given("a given")\n'
+        "def g(ctx): pass\n"
+        '@When("an action")\n'
+        "def w(ctx): pass\n"
+        '@Then("a result")\n'
+        "def t(ctx): pass\n"
+        '@Step("generic")\n'
+        "def s(ctx): pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert {d.keyword for d in defs} == {"given", "when", "then", "step"}
+
+
+def test_non_behave_given_not_detected(tmp_path: Path) -> None:
+    """A ``given`` imported from another package is not a step decorator."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "hypo.py").write_text(
+        "from hypothesis import given, strategies as st\n"
+        "\n"
+        '@given("some string")\n'
+        "def prop(x): pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert defs == []
+
+
+def test_use_step_matcher_mid_file(tmp_path: Path) -> None:
+    """The matcher applies to the definitions that follow the call."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "mixed.py").write_text(
+        "from behave import given, use_step_matcher\n"
+        "\n"
+        '@given("a parse step")\n'
+        "def p1(ctx): pass\n"
+        "\n"
+        'use_step_matcher("re")\n'
+        "\n"
+        '@given("a regex (step|thing)")\n'
+        "def p2(ctx): pass\n"
+        "\n"
+        'use_step_matcher("parse")\n'
+        "\n"
+        '@given("another parse step")\n'
+        "def p3(ctx): pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    by_pattern = {d.pattern: d for d in defs}
+    assert by_pattern["a parse step"].matcher_type == "parse"
+    assert by_pattern["a regex (step|thing)"].matcher_type == "re"
+    assert by_pattern["another parse step"].matcher_type == "parse"

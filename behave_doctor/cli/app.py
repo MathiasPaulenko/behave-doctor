@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from typer._click import exceptions as click_exceptions
 
 from behave_doctor import __version__
 from behave_doctor.cli.formatters import format_report
@@ -335,6 +336,11 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         code = getattr(exc, "code", None)
         return int(code) if code is not None else 0
+    except click_exceptions.ClickException as exc:
+        # Bad usage (unknown option, missing argument, ...): print a clean
+        # error message instead of letting a traceback escape.
+        exc.show()
+        return exc.exit_code
     # In standalone_mode=False, click returns the exit code directly
     # (from typer.Exit/click.Exit) instead of raising. If the command
     # itself raises typer.Exit, click catches it and returns the code.

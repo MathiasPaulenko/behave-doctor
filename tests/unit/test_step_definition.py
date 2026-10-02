@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
+from behave.matchers import ParseMatcher
+
 from behave_doctor.model.step_definition import StepDefinition
+
+
+def _stub() -> None:
+    pass
 
 
 def _make_def(**overrides: object) -> StepDefinition:
     defaults: dict[str, object] = {
         "keyword": "given",
         "pattern": "the user is logged in",
-        "pattern_compiled": re.compile("the user is logged in"),
+        "matcher": ParseMatcher(_stub, "the user is logged in"),
         "matcher_type": "parse",
         "file": Path("steps/auth.py"),
         "line": 10,

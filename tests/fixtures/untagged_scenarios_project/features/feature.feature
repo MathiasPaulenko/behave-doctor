@@ -1,4 +1,3 @@
-@featuretag
 Feature: Mixed tags
 
   @tagged

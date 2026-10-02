@@ -17,12 +17,19 @@ class ScanError(Exception):
     """Raised when a project cannot be scanned (e.g. missing features dir)."""
 
 
-def scan_features(project_path: Path, config: DoctorConfig) -> Project:
+def scan_features(
+    project_path: Path,
+    config: DoctorConfig,
+    errors: list[tuple[Path, str]] | None = None,
+) -> Project:
     """Scan a Behave project directory and return a behave-model ``Project``.
 
     Args:
         project_path: Root directory of the Behave project.
         config: Configuration specifying the features directory.
+        errors: Optional list that receives ``(file, message)`` pairs for
+            feature files that fail to parse or adapt. Failures are also
+            logged as warnings.
 
     Returns:
         A ``Project`` containing all parseable ``.feature`` files.
@@ -54,11 +61,15 @@ def scan_features(project_path: Path, config: DoctorConfig) -> Project:
             features.append(adapter.adapt_feature(behave_feature, filename=str(fpath)))
         except (ParseError, OSError, UnicodeError) as exc:
             logger.warning("Could not parse %s: %s. Skipping this file.", fpath, exc)
+            if errors is not None:
+                errors.append((fpath, str(exc)))
             continue
         except Exception as exc:
             if isinstance(exc, (MemoryError, RecursionError)):
                 raise
             logger.warning("Could not adapt %s: %s. Skipping this file.", fpath, exc)
+            if errors is not None:
+                errors.append((fpath, str(exc)))
             continue
 
     return Project(

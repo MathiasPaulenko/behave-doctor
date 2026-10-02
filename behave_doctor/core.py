@@ -78,7 +78,8 @@ def build_report(
     if not project_path.is_dir():
         raise ScanError(f"Project path is not a directory: {project_path}")
     start = time.perf_counter()
-    project = scan_features(project_path, config)
+    scan_errors: list[tuple[Path, str]] = []
+    project = scan_features(project_path, config, errors=scan_errors)
     step_definitions = scan_steps((project_path / config.steps_dir).resolve(), config)
     graph = build_graph(project, step_definitions)
 
@@ -87,6 +88,7 @@ def build_report(
         step_definitions=step_definitions,
         dependency_graph=graph,
         config=config,
+        scan_errors=scan_errors,
     )
     rules = get_all_rules()
     diagnostics = run_rules(context, rules, rule_ids=rule_ids, exclude_ids=exclude_ids)

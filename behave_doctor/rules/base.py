@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from behave_model import Project
@@ -55,12 +56,15 @@ class RuleContext:
         step_definitions: All discovered step definitions.
         dependency_graph: The built dependency graph.
         config: The active ``DoctorConfig``.
+        scan_errors: ``(file, message)`` pairs for feature files that could
+            not be parsed or adapted during the scan.
     """
 
     project: Project
     step_definitions: list[StepDefinition]
     dependency_graph: DependencyGraph
     config: DoctorConfig
+    scan_errors: list[tuple[Path, str]] = field(default_factory=list)
 
 
 def _rule_enabled(rule: Rule, config: DoctorConfig) -> bool:

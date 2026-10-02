@@ -67,6 +67,21 @@ def scenario_tag_sets(scenario: Any) -> list[list[Any]]:
     return [base]
 
 
+def iter_feature_scenarios(feature: Any) -> Any:
+    """Yield ``(scenario, rule)`` pairs for every scenario in ``feature``.
+
+    ``rule`` is the behave-model ``Rule`` the scenario belongs to, or ``None``
+    for scenarios directly under the feature. Scenarios inside ``Rule:``
+    blocks (Gherkin v6, behave 1.3) inherit the rule's tags and backgrounds,
+    so callers that need effective tags or steps must know the container.
+    """
+    for scenario in getattr(feature, "scenarios", []) or []:
+        yield scenario, None
+    for rule in getattr(feature, "rules", []) or []:
+        for scenario in getattr(rule, "scenarios", []) or []:
+            yield scenario, rule
+
+
 def _scenario_count(scenario: Any) -> int:
     """Return the number of generated scenarios for a source scenario.
 
@@ -96,15 +111,18 @@ def project_scenario_count(project: Project) -> int:
 def feature_step_count(feature: Any) -> int:
     """Return the number of generated steps in ``feature``.
 
-    Each generated scenario (including those from ``ScenarioOutline`` example rows)
-    contributes its own steps plus the feature background steps, matching Behave's
+    Each generated scenario (including those from ``ScenarioOutline`` example
+    rows) contributes its own steps plus the applicable background steps: the
+    feature Background applies to every scenario, and a Rule's Background
+    additionally applies to scenarios inside that rule — matching Behave's
     runtime execution model.
     """
     background_steps = len(feature.background.steps) if feature.background else 0
     total = 0
-    for scenario in feature.all_scenarios():
+    for scenario, rule in iter_feature_scenarios(feature):
+        rule_bg = len(rule.background.steps) if rule is not None and rule.background else 0
         count = _scenario_count(scenario)
-        total += count * (len(scenario.steps) + background_steps)
+        total += count * (len(scenario.steps) + background_steps + rule_bg)
     return total
 
 
@@ -126,6 +144,7 @@ __all__ = [
     "all_project_tags",
     "feature_scenario_count",
     "feature_step_count",
+    "iter_feature_scenarios",
     "location_line",
     "location_path",
     "project_scenario_count",
