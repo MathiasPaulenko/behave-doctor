@@ -1,6 +1,6 @@
 # Rules Overview
 
-behave-doctor ships with **19 diagnostic rules** across **5 categories**.
+behave-doctor ships with **20 diagnostic rules** across **5 categories**.
 Each rule has a stable ID (e.g. `BD301`), a severity, a category, and
 optionally configurable thresholds.
 
@@ -40,6 +40,7 @@ optionally configurable thresholds.
 | BD302 | undefined-step              | error    | Coverage     | No                                                 |
 | BD303 | unused-tag                  | info     | Coverage     | `exclude_tags` (global)                            |
 | BD304 | orphan-scenario             | warning  | Coverage     | No                                                 |
+| BD305 | unparseable-feature          | error    | Coverage     | No                                                 |
 | BD401 | scenario-too-many-steps     | warning  | Complexity   | `max_steps` (default 10)                           |
 | BD402 | step-too-many-params        | warning  | Complexity   | `max_params` (default 5)                           |
 | BD403 | feature-too-large           | warning  | Complexity   | `max_lines` (default 300)                          |
@@ -51,7 +52,7 @@ optionally configurable thresholds.
 
 - [Structure (BD101-104)](structure.md)
 - [Quality (BD201-205)](quality.md)
-- [Coverage (BD301-304)](coverage.md)
+- [Coverage (BD301-305)](coverage.md)
 - [Complexity (BD401-403)](complexity.md)
 - [Dependencies (BD501-503)](dependencies.md)
 

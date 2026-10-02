@@ -112,6 +112,7 @@ BD301  WARNING   coverage     unused-step-def  -  Step definition never matched 
 BD302  ERROR     coverage     undefined-step  -  Step in feature has no matching definition.
 BD303  INFO      coverage     unused-tag  -  Tag defined but never used in CI filters.
 BD304  WARNING   coverage     orphan-scenario  -  Scenario never selected by any tag filter (all tags unique).
+BD305  ERROR     coverage     unparseable-feature  -  Feature file could not be parsed; its scenarios were skipped.
 BD401  WARNING   complexity   scenario-too-many-steps  -  Scenario has more than N steps (default 10).
 BD402  WARNING   complexity   step-too-many-params  -  Step pattern has more than N parameters (default 5).
 BD403  WARNING   complexity   feature-too-large  -  Feature file has more than N lines (default 300).

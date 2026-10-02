@@ -35,12 +35,12 @@ step definitions with the AST — never importing or executing them.
 
 ## Features
 
-- **19 diagnostic rules** across 5 categories:
+- **20 diagnostic rules** across 5 categories:
   - **Structure** (BD101-104) — feature, scenario, step, and tag counts.
   - **Quality** (BD201-205) — duplicate definitions, missing tags, oversized
     features, inconsistent tag casing, ambiguous step matches.
-  - **Coverage** (BD301-304) — unused step definitions, undefined steps,
-    unused tags, orphan scenarios.
+  - **Coverage** (BD301-305) — unused step definitions, undefined steps,
+    unused tags, orphan scenarios, unparseable feature files.
   - **Complexity** (BD401-403) — scenario step count, step parameter count,
     feature file size.
   - **Dependencies** (BD501-503) — circular imports, unused imports, missing
@@ -59,7 +59,7 @@ step definitions with the AST — never importing or executing them.
   integrations.
 - **CLI** with `scan`, `impact`, `list-rules`, `explain`, `stats`, and
   `graph` subcommands.
-- **95% test coverage** — 270 tests across unit and integration suites.
+- **97% test coverage** — 313 tests across unit and integration suites.
 
 ## Quick example
 
@@ -91,9 +91,10 @@ behave-doctor never executes your code. It works in four phases:
    scanner uses Python's `ast` module to extract `@given`/`@when`/`@then`
    decorators from step modules — without importing them.
 2. **Match** — Each feature step is matched against step definitions using
-   the matcher type (`re`, `parse`, `cfparse`, or `behave`'s default). The
+   Behave's own matcher classes (`parse`, `cfparse`, `re`, `re0`),
+   honouring `use_step_matcher` calls in each module. The
    dependency graph records which definitions are used and which are not.
-3. **Analyze** — 19 rules visit the project, step definitions, and
+3. **Analyze** — 20 rules visit the project, step definitions, and
    dependency graph to produce diagnostics.
 4. **Report** — Diagnostics are formatted as text, JSON, or SARIF and written
    to stdout or a file.
@@ -103,7 +104,7 @@ behave-doctor never executes your code. It works in four phases:
 - [Installation](installation.md) — get behave-doctor running in 30 seconds.
 - [Quick Start](quickstart.md) — scan a project, filter rules, explore stats.
 - [CLI Reference](cli.md) — every command, flag, and option.
-- [Rules](rules/index.md) — detailed documentation for all 19 rules.
+- [Rules](rules/index.md) — detailed documentation for all 20 rules.
 - [Configuration](configuration.md) — customize thresholds and behavior.
 - [Reporters](reporters.md) — text, JSON, and SARIF output formats.
 - [Python API](python-api.md) — use behave-doctor as a library.

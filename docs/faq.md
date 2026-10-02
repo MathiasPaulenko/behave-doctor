@@ -166,9 +166,11 @@ This produces exit code 2. It means the `features_dir` path doesn't exist.
 2. **Custom decorators** — behave-doctor only recognizes `@given`,
    `@when`, `@then`, and their aliases (`@step`, `@Given`, `@When`,
    `@Then`). If you use custom decorators, they won't be detected.
-3. **Dynamic step registration** — Steps registered at runtime (e.g. via
-   `behave.register_type` or dynamic `step_matcher` changes) cannot be
-   detected statically.
+3. **Dynamic step registration** — Steps registered at runtime via custom
+   decorators or `register_step_matcher_class` cannot be detected
+   statically. `use_step_matcher`/`use_default_step_matcher` calls **are**
+   honoured, and patterns using custom `register_type` types are matched
+   approximately (flagged via `StepDefinition.approximate`).
 
 ### The SARIF file is empty or has no results
 

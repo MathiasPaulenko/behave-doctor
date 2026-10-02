@@ -6,7 +6,7 @@
 [![Docs](https://github.com/MathiasPaulenko/behave-doctor/actions/workflows/docs.yml/badge.svg)](https://mathiaspaulenko.github.io/behave-doctor/)
 [![PyPI](https://img.shields.io/pypi/v/behave-doctor)](https://pypi.org/project/behave-doctor/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/MathiasPaulenko/behave-doctor)
+[![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)](https://github.com/MathiasPaulenko/behave-doctor)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000)](https://docs.astral.sh/ruff/)
 [![Types: mypy](https://img.shields.io/badge/types-mypy%20strict-blue)](https://mypy-lang.org/)
@@ -42,12 +42,12 @@ step definitions with the AST — never importing or executing them.
 
 ## Features
 
-- **19 diagnostic rules** across 5 categories:
+- **20 diagnostic rules** across 5 categories:
   - **Structure** (BD101-104) — feature, scenario, step, and tag counts.
   - **Quality** (BD201-205) — duplicate definitions, missing tags, oversized
     features, inconsistent tag casing, ambiguous step matches.
-  - **Coverage** (BD301-304) — unused step definitions, undefined steps,
-    unused tags, orphan scenarios.
+  - **Coverage** (BD301-305) — unused step definitions, undefined steps,
+    unused tags, orphan scenarios, unparseable feature files.
   - **Complexity** (BD401-403) — scenario step count, step parameter count,
     feature file size.
   - **Dependencies** (BD501-503) — circular imports, unused imports, missing
@@ -57,8 +57,8 @@ step definitions with the AST — never importing or executing them.
   `behave --name`, JSON, or human-readable text.
 - **4 output formats**: human-readable text (with ANSI colors), JSON, SARIF
   2.1.0 for GitHub Code Scanning, and `names` for impact analysis.
-- **Minimal runtime dependencies** — only `behave-model` (parsing) and
-  `typer` (CLI). Pure Python, fully typed, `mypy --strict` clean, `ruff`
+- **Minimal runtime dependencies** — only `behave`/`behave-model` (parsing
+  and matching) and `typer` (CLI). Pure Python, fully typed, `mypy --strict` clean, `ruff`
   clean.
 - **Configurable** via `[tool.behave-doctor]` in `pyproject.toml` — per-rule
   thresholds, enable/disable, severity filtering, tag exclusions.
@@ -66,7 +66,7 @@ step definitions with the AST — never importing or executing them.
   integrations.
 - **CLI** with `scan`, `impact`, `list-rules`, `explain`, `stats`, and
   `graph` subcommands.
-- **95% test coverage** — 270 tests across unit and integration suites.
+- **97% test coverage** — 313 tests across unit and integration suites.
 
 ## Installation
 
@@ -74,8 +74,9 @@ step definitions with the AST — never importing or executing them.
 pip install behave-doctor
 ```
 
-**Requirements**: Python 3.11+. The `behave-model` package (for `.feature`
-parsing) and `typer` (for the CLI) are installed automatically.
+**Requirements**: Python 3.11+. The `behave` and `behave-model` packages
+(for `.feature` parsing and step matching) and `typer` (for the CLI) are
+installed automatically.
 
 ## Quick start
 
@@ -172,6 +173,7 @@ are affected.
 | BD302 | undefined-step              | error    | Coverage     | No                                                 |
 | BD303 | unused-tag                  | info     | Coverage     | `exclude_tags` (global)                            |
 | BD304 | orphan-scenario             | warning  | Coverage     | No                                                 |
+| BD305 | unparseable-feature          | error    | Coverage     | No                                                 |
 | BD401 | scenario-too-many-steps     | warning  | Complexity   | `max_steps` (default 10)                           |
 | BD402 | step-too-many-params        | warning  | Complexity   | `max_params` (default 5)                           |
 | BD403 | feature-too-large           | warning  | Complexity   | `max_lines` (default 300)                          |
@@ -182,7 +184,7 @@ are affected.
 Explore rules from the CLI:
 
 ```bash
-behave-doctor list-rules          # list all 19 rules
+behave-doctor list-rules          # list all 20 rules
 behave-doctor explain BD301       # explain a specific rule
 ```
 
@@ -319,7 +321,7 @@ print(format_impact(result, "names"))
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.3.0
+    rev: v1.4.0
     hooks:
       - id: behave-doctor
         args: ["scan", "--severity", "warning", "--no-color"]
@@ -333,9 +335,10 @@ behave-doctor never executes your code. It works in four phases:
    scanner uses Python's `ast` module to extract `@given`/`@when`/`@then`
    decorators from step modules — without importing them.
 2. **Match** — Each feature step is matched against step definitions using
-   the matcher type (`re`, `parse`, `cfparse`, or `behave`'s default). The
+   Behave's own matcher classes (`parse`, `cfparse`, `re`, `re0`),
+   honouring `use_step_matcher` calls in each module. The
    dependency graph records which definitions are used and which are not.
-3. **Analyze** — 19 rules visit the project, step definitions, and
+3. **Analyze** — 20 rules visit the project, step definitions, and
    dependency graph to produce diagnostics.
 4. **Report** — Diagnostics are formatted as text, JSON, or SARIF and written
    to stdout or a file.
@@ -362,8 +365,9 @@ Full documentation at **<https://mathiaspaulenko.github.io/behave-doctor/>**:
   Actions OIDC. No long-lived API tokens are stored in secrets.
 - **Pinned actions** — all GitHub Actions are pinned to specific versions
   (e.g. `@v4`, `@v1.12.4`).
-- **Minimal dependencies** — only `behave-model` (parsing) and `typer` (CLI)
-  at runtime. No transitive dependency tree to audit.
+- **Minimal dependencies** — only `behave`/`behave-model` (parsing and
+  matching) and `typer` (CLI) at runtime. No transitive dependency tree to
+  audit.
 - **No code execution** — behave-doctor never imports or executes your step
   definitions. It uses Python's `ast` module for static analysis only.
 - **`py.typed` marker** — the package ships with inline type hints.

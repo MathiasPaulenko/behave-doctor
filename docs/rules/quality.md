@@ -186,9 +186,9 @@ Use a project-wide tag convention document and enforce it in code review.
 
 ## BD205 — ambiguous-step-match
 
-Finds feature steps that match multiple step definitions. Behave raises
-`AmbiguousStepError` at runtime when a step text matches more than one
-definition, halting the scenario.
+Finds feature steps that match multiple step definitions. Behave does
+not error at runtime for this — it silently picks the first registered
+match, so which definition runs depends on module import order.
 
 | Attribute    | Value          |
 | ------------ | -------------- |

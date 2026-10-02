@@ -17,7 +17,7 @@ behave-doctor will:
 2. Parse Python step definitions under `features/steps/` using the AST —
    **without importing or executing them**.
 3. Build a dependency graph (step matches + module imports).
-4. Run all 19 diagnostic rules.
+4. Run all 20 diagnostic rules.
 5. Print a human-readable report to stdout.
 
 ### What you'll see
@@ -233,7 +233,7 @@ See [CLI Reference](cli.md) for the full `impact` command documentation.
 ## Next steps
 
 - [CLI Reference](cli.md) — every command, flag, and option.
-- [Rules](rules/index.md) — detailed documentation for all 19 rules.
+- [Rules](rules/index.md) — detailed documentation for all 20 rules.
 - [Configuration](configuration.md) — customize thresholds via
   `pyproject.toml`.
 - [CI/CD](ci-cd.md) — integrate with GitHub Actions and pre-commit.

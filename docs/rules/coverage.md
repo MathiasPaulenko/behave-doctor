@@ -1,7 +1,7 @@
-# Coverage Rules (BD301-304)
+# Coverage Rules (BD301-305)
 
-Detect unused step definitions, undefined feature steps, unused tags, and
-orphan scenarios. These rules ensure that every step in your feature files
+Detect unused step definitions, undefined feature steps, unused tags,
+orphan scenarios, and feature files that fail to parse. These rules ensure that every step in your feature files
 has a matching implementation and every step definition is actually used.
 
 ---
@@ -179,3 +179,29 @@ BD304  WARNING  Scenario "Guest checkout" has only unique tags ['@checkout', '@g
 - **Remove unique tags** if they don't serve a filtering purpose.
 - **Accept** the orphan status if the scenario genuinely needs a unique tag
   (e.g. `@manual` for scenarios that can only be run manually).
+
+---
+
+## BD305 — unparseable-feature
+
+Finds feature files that could not be parsed and were skipped during the
+scan. Behave aborts the entire run when a feature file fails to parse, so a
+file that is silently skipped here would break the suite at runtime — and
+every scenario it contains is invisible to all other rules.
+
+| Attribute    | Value          |
+| ------------ | -------------- |
+| Severity     | error          |
+| Category     | Coverage       |
+| Configurable | No             |
+
+### Example output
+
+```text
+BD305  ERROR  Could not parse feature file: Parser failure in state init
+        (features/broken.feature:1)
+```
+
+### How to fix
+
+- Fix the Gherkin syntax in the reported file — Behave itself cannot load it.

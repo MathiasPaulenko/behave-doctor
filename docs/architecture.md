@@ -57,8 +57,8 @@ behave_doctor/
 │   ├── __init__.py          #   Rule registry with lazy imports
 │   ├── base.py              #   Rule ABC, RuleContext, run_rules()
 │   ├── structure.py         #   BD101-104
-│   ├── quality.py           #   BD201-204
-│   ├── coverage.py          #   BD301-304
+│   ├── quality.py           #   BD201-205
+│   ├── coverage.py          #   BD301-305
 │   ├── complexity.py        #   BD401-403
 │   └── dependencies.py      #   BD501-503
 ├── reporters/               # Output formatters
@@ -77,8 +77,9 @@ behave_doctor/
 ### `StepDefinition`
 
 Represents a single `@given`/`@when`/`@then` decorator found in a Python
-file. Contains the pattern string, matcher type, file path, line number,
-and the AST node.
+file. Contains the pattern string, the compiled Behave matcher
+(`parse`/`cfparse`/`re`/`re0`, honouring `use_step_matcher` calls), matcher
+type, file path, line number, module, function name, and parameters.
 
 ### `StepMatch`
 
@@ -143,7 +144,8 @@ The `core.py` orchestrator runs the following steps:
   All analysis is static (AST-based).
 - **No side effects** — scanning a project produces no writes, no network
   calls, no state changes.
-- **Minimal dependencies** — beyond `behave-model` (parsing) and `typer`
+- **Minimal dependencies** — beyond `behave`/`behave-model` (parsing and
+  matching) and `typer`
   (CLI), behave-doctor has no runtime dependencies. It uses only the Python
   standard library for everything else.
 - **Stable rule IDs** — Rule IDs (BD101-503) are stable and will never

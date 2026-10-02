@@ -134,8 +134,8 @@ Enum of diagnostic categories.
 | Value         | Description                                      |
 | ------------- | ------------------------------------------------ |
 | `STRUCTURE`   | Informational metrics (BD101-104).               |
-| `QUALITY`     | Suite quality issues (BD201-204).                |
-| `COVERAGE`    | Unused/undefined steps and tags (BD301-304).     |
+| `QUALITY`     | Suite quality issues (BD201-205).                |
+| `COVERAGE`    | Unused/undefined steps and tags (BD301-305).     |
 | `COMPLEXITY`  | Size and complexity limits (BD401-403).          |
 | `DEPENDENCY`  | Import and module analysis (BD501-503).          |
 

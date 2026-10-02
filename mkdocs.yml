@@ -43,8 +43,8 @@ nav:
   - Rules:
       - Overview: rules/index.md
       - Structure (BD101-104): rules/structure.md
-      - Quality (BD201-204): rules/quality.md
-      - Coverage (BD301-304): rules/coverage.md
+      - Quality (BD201-205): rules/quality.md
+      - Coverage (BD301-305): rules/coverage.md
       - Complexity (BD401-403): rules/complexity.md
       - Dependencies (BD501-503): rules/dependencies.md
   - Reference:
