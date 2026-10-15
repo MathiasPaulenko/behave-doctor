@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-16
+
+### Fixed
+
+- Shortened `action.yml` description to meet Marketplace limits
+
 ## [1.5.0] - 2026-10-16
 
 ### Added

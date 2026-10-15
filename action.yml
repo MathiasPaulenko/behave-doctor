@@ -1,8 +1,5 @@
 name: behave-doctor
-description: >-
-  Static diagnostics and impact analysis for Behave BDD suites —
-  no test execution. `scan` lints the suite, `impact` lists scenarios
-  affected by changed step files.
+description: Static diagnostics and impact analysis for Behave BDD suites — no test execution needed.
 author: MathiasPaulenko
 branding:
   icon: activity
