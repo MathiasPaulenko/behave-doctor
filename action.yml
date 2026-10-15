@@ -53,7 +53,7 @@ runs:
       if: inputs.mode == 'impact'
       shell: bash
       run: |
-        CHANGED=$(git diff --name-only "${{ inputs.base }}...HEAD" | grep -E '\.(py|feature)$' | tr '\n' ' ')
+        CHANGED=$(git diff --name-only "${{ inputs.base }}...HEAD" | grep -E '\.(py|feature)$' | tr '\n' ' ' || true)
         echo "Changed files: $CHANGED"
         NAMES=$(behave-doctor impact "${{ inputs.path }}" --changed-files $CHANGED --format names ${{ inputs.args }} || true)
         echo "names<<EOF" >> "$GITHUB_OUTPUT"
