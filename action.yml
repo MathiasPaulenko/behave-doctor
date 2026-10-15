@@ -1,0 +1,62 @@
+name: behave-doctor
+description: >-
+  Static diagnostics and impact analysis for Behave BDD suites —
+  no test execution. `scan` lints the suite, `impact` lists scenarios
+  affected by changed step files.
+author: MathiasPaulenko
+branding:
+  icon: activity
+  color: green
+
+inputs:
+  mode:
+    description: "scan (suite diagnostics) or impact (changed-files → affected scenarios)"
+    required: false
+    default: scan
+  path:
+    description: Path to the project/features root
+    required: false
+    default: "."
+  base:
+    description: Base ref for impact mode diff (defaults to the PR base SHA)
+    required: false
+    default: ${{ github.event.pull_request.base.sha }}
+  args:
+    description: Extra args appended to the behave-doctor command
+    required: false
+    default: ""
+
+outputs:
+  affected-scenarios:
+    description: Newline-separated scenario names affected by the change (impact mode)
+    value: ${{ steps.impact.outputs.names }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install behave-doctor
+      shell: bash
+      run: pip install behave-doctor
+
+    - name: Fetch base for diff
+      if: inputs.mode == 'impact'
+      shell: bash
+      run: git fetch --depth=50 origin "${{ inputs.base }}" || git fetch --depth=50 origin main
+
+    - name: Run scan
+      if: inputs.mode == 'scan'
+      shell: bash
+      run: behave-doctor scan "${{ inputs.path }}" ${{ inputs.args }}
+
+    - name: Run impact analysis
+      id: impact
+      if: inputs.mode == 'impact'
+      shell: bash
+      run: |
+        CHANGED=$(git diff --name-only "${{ inputs.base }}...HEAD" | grep -E '\.(py|feature)$' | tr '\n' ' ')
+        echo "Changed files: $CHANGED"
+        NAMES=$(behave-doctor impact "${{ inputs.path }}" --changed-files $CHANGED --format names ${{ inputs.args }} || true)
+        echo "names<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$NAMES" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+        echo "$NAMES"
