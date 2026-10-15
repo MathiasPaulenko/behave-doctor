@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "behave-doctor"
-version = "1.4.0"
+version = "1.5.0"
 description = "Lint, diagnose, and analyze the impact of changes in your Behave BDD test suites — without running a single test."
 readme = "README.md"
 requires-python = ">=3.11"
