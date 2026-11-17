@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from behave_doctor.graph.cycles import detect_cycles
 
 
@@ -60,3 +62,19 @@ def test_deep_chain_with_cycle_at_end() -> None:
     graph[f"m{n}"] = {"m0"}  # cycle back to start
     cycles = detect_cycles(graph)
     assert len(cycles) == 1
+
+
+def test_relative_import_from_package_init_resolves_inside_package(tmp_path: Path) -> None:
+    """``from . import helpers`` inside ``pkg/__init__.py`` resolves to
+    ``pkg.helpers``, not bare ``helpers`` — the package init's anchor is the
+    package itself."""
+    from behave_doctor.graph.builder import _extract_module_imports
+
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    init = pkg / "__init__.py"
+    init.write_text("from . import helpers\n", encoding="utf-8")
+    assert _extract_module_imports(init, "pkg") == {"pkg.helpers"}
+    # And one level up escapes to the parent package.
+    init.write_text("from .. import top\n", encoding="utf-8")
+    assert _extract_module_imports(init, "pkg") == {"top"}

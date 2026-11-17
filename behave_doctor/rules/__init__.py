@@ -53,10 +53,14 @@ def get_all_rules() -> list[Rule]:
 
 
 def get_rule(rule_id: str) -> Rule | None:
-    """Return an instance of the rule with the given ID, or ``None``."""
+    """Return an instance of the rule with the given ID, or ``None``.
+
+    Rule IDs are case-insensitive for lookup convenience (``bd301`` finds
+    ``BD301``); exact matches always win.
+    """
     if not _registry:
         _discover_rules()
-    cls = _registry.get(rule_id)
+    cls = _registry.get(rule_id) or _registry.get(rule_id.upper())
     return cls() if cls is not None else None
 
 

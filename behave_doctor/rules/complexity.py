@@ -6,7 +6,7 @@ from behave_doctor.model.diagnostic import Diagnostic
 from behave_doctor.model.enums import Category, Severity
 from behave_doctor.model.location import location_line, location_path
 from behave_doctor.rules import register
-from behave_doctor.rules.base import Rule, RuleContext, _get_int_override
+from behave_doctor.rules.base import Rule, RuleContext, _get_int_override, _rule_overrides
 
 
 @register
@@ -20,7 +20,7 @@ class ScenarioTooManySteps(Rule):
     description = "Scenario has more than N steps (default 10)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        overrides = context.config.rules.get(self.id, {})
+        overrides = _rule_overrides(self.id, context.config)
         max_steps = _get_int_override(overrides, "max_steps", 10)
 
         diagnostics: list[Diagnostic] = []
@@ -58,7 +58,7 @@ class StepTooManyParams(Rule):
     description = "Step pattern has more than N parameters (default 5)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        overrides = context.config.rules.get(self.id, {})
+        overrides = _rule_overrides(self.id, context.config)
         max_params = _get_int_override(overrides, "max_params", 5)
 
         diagnostics: list[Diagnostic] = []
@@ -98,7 +98,7 @@ class FeatureTooLarge(Rule):
     description = "Feature file has more than N lines (default 300)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        overrides = context.config.rules.get(self.id, {})
+        overrides = _rule_overrides(self.id, context.config)
         max_lines = _get_int_override(overrides, "max_lines", 300)
 
         diagnostics: list[Diagnostic] = []

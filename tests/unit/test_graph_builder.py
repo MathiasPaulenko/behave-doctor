@@ -16,8 +16,9 @@ def _build() -> object:
     return build_graph(project, steps)
 
 
-def test_normalize_step_text_collapses_whitespace() -> None:
-    assert normalize_step_text("  the user  is logged in ") == "the user is logged in"
+def test_normalize_step_text_strips_only_outer_whitespace() -> None:
+    """Behave matches step names verbatim — inner whitespace is preserved."""
+    assert normalize_step_text("  the user  is logged in ") == "the user  is logged in"
 
 
 def test_exact_match() -> None:

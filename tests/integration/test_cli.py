@@ -139,9 +139,11 @@ def test_scan_default_path_is_cwd(
 
 
 def test_version_flag() -> None:
+    from importlib.metadata import version as metadata_version
+
     code, out, _ = _run(["--version"])
     assert code == 0
-    assert "1.4.0" in out
+    assert metadata_version("behave-doctor") in out
 
 
 def test_main_returns_exit_code() -> None:
@@ -260,3 +262,22 @@ def test_impact_relative_path_against_project() -> None:
     assert code == 0
     assert "Successful login" in out
     assert "Failed login" in out
+
+
+def test_impact_scan_errors_fail_closed(tmp_path) -> None:
+    """Unparseable files make the impact result untrustworthy — the command
+    must exit non-zero instead of green-lighting an incomplete analysis."""
+    features = tmp_path / "features"
+    steps = features / "steps"
+    steps.mkdir(parents=True)
+    (features / "a.feature").write_text(
+        "Feature: f\n  Scenario: s\n    Given x\n", encoding="utf-8"
+    )
+    (steps / "ok.py").write_text(
+        'from behave import given\n@given("x")\ndef d(ctx): pass\n', encoding="utf-8"
+    )
+    (steps / "broken.py").write_text("def (((\n", encoding="utf-8")
+    code, out, err = _run(["impact", str(tmp_path), "--changed-files", str(steps / "ok.py")])
+    assert code == 1
+    assert "Scan errors" in out
+    assert "broken.py" in err

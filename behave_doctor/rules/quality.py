@@ -17,7 +17,7 @@ from behave_doctor.model.enums import Category, Severity
 from behave_doctor.model.location import location_line, location_path
 from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.rules import register
-from behave_doctor.rules.base import Rule, RuleContext, _get_int_override
+from behave_doctor.rules.base import Rule, RuleContext, _get_int_override, _rule_overrides
 
 
 @register
@@ -123,7 +123,7 @@ class FeatureTooManyScenarios(Rule):
     description = "Feature has more than N scenarios (default 20)."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        overrides = context.config.rules.get(self.id, {})
+        overrides = _rule_overrides(self.id, context.config)
         max_scenarios = _get_int_override(overrides, "max_scenarios", 20)
 
         diagnostics: list[Diagnostic] = []

@@ -58,6 +58,8 @@ class RuleContext:
         config: The active ``DoctorConfig``.
         scan_errors: ``(file, message)`` pairs for feature files that could
             not be parsed or adapted during the scan.
+        step_scan_errors: ``(file, message)`` pairs for Python step files
+            that could not be parsed during the scan.
     """
 
     project: Project
@@ -65,11 +67,27 @@ class RuleContext:
     dependency_graph: DependencyGraph
     config: DoctorConfig
     scan_errors: list[tuple[Path, str]] = field(default_factory=list)
+    step_scan_errors: list[tuple[Path, str]] = field(default_factory=list)
+
+
+def _rule_overrides(rule_id: str, config: DoctorConfig) -> Any:
+    """Return the config overrides for ``rule_id``, matching case-insensitively.
+
+    ``from_pyproject`` normalises keys to upper-case, but a ``DoctorConfig``
+    built by hand may use lower-case keys (``rules={"bd401": {...}}``).
+    """
+    overrides = config.rules.get(rule_id)
+    if overrides is None:
+        overrides = next(
+            (v for k, v in config.rules.items() if k.upper() == rule_id.upper()),
+            None,
+        )
+    return overrides
 
 
 def _rule_enabled(rule: Rule, config: DoctorConfig) -> bool:
     """Return ``True`` if the rule is enabled in the config."""
-    overrides = config.rules.get(rule.id)
+    overrides = _rule_overrides(rule.id, config)
     if overrides is None:
         return True
     if isinstance(overrides, bool):
@@ -122,13 +140,16 @@ def run_rules(
     Returns:
         All diagnostics produced by the enabled, non-excluded rules.
     """
-    exclude = set(exclude_ids or [])
-    allow = set(rule_ids) if rule_ids is not None else None
+    # Rule IDs match case-insensitively (``bd301`` selects ``BD301``).
+    exclude = {rule_id.upper() for rule_id in exclude_ids or []}
+    # An empty allowlist is treated like no allowlist — otherwise it would
+    # silently disable every rule and report a vacuously clean project.
+    allow = {rule_id.upper() for rule_id in rule_ids} if rule_ids else None
     diagnostics: list[Diagnostic] = []
     for rule in rules:
-        if rule.id in exclude:
+        if rule.id.upper() in exclude:
             continue
-        if allow is not None and rule.id not in allow:
+        if allow is not None and rule.id.upper() not in allow:
             continue
         if not _rule_enabled(rule, context.config):
             continue

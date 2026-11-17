@@ -10,7 +10,6 @@ behave-doctor looks for `pyproject.toml` in the following order:
 
 1. The path specified by `--config` on the CLI.
 2. `pyproject.toml` in the project root (the `PATH` argument to `scan`).
-3. `pyproject.toml` in the current working directory.
 
 If no config file is found, all defaults are used.
 
@@ -54,7 +53,7 @@ max_lines = 200
 | `features_dir`  | string   | `features/`        | Relative path to the features directory.             |
 | `steps_dir`     | string   | `features/steps/`  | Relative path to the step definitions directory.     |
 | `min_severity`  | string   | `info`             | Minimum severity to report (see below).              |
-| `exclude_tags`  | list     | `[]`               | Tags excluded from BD303 (unused-tag) analysis.      |
+| `exclude_tags`  | list     | `[]`               | Tags excluded from BD303 and BD304 tag analysis.      |
 | `exclude_paths` | list     | `[]`               | Glob patterns of paths to exclude from scanning.     |
 
 ### `features_dir`
@@ -95,8 +94,9 @@ min_severity = "warning"  # only show errors and warnings
 
 ### `exclude_tags`
 
-A list of tags to exclude from BD303 (unused-tag) analysis. Tags listed here
-are considered "intentionally unused" and will not be flagged.
+A list of tags to exclude from BD303 (unused-tag) and BD304 (orphan-scenario)
+analysis. Tags listed here are considered "intentionally unused" and will
+not be flagged.
 
 ```toml
 exclude_tags = ["@smoke", "@wip", "@manual"]

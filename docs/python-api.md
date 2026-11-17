@@ -226,6 +226,8 @@ The result of an `impact_analysis` call.
 | `affected_scenarios`  | `list[AffectedScenario]`| Deduplicated, sorted by (path, line).    |
 | `affected_features`   | `list[str]`             | Sorted unique feature file paths.        |
 | `summary`             | `ImpactSummary`         | Aggregate counts.                        |
+| `scan_errors`         | `list[tuple[str, str]]` | Files that failed to parse — the         |
+|                       |                         | affected-scenario list may be incomplete.|
 | `scenario_names`      | `list[str]` (property)  | Scenario names for `behave --name`.      |
 
 ### `ImpactSummary`

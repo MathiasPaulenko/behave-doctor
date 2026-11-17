@@ -62,8 +62,9 @@ class TextReporter:
 
         lines.append("")
         seconds = report.scan_duration_ms / 1000.0
-        error_count = sum(1 for d in diagnostics if d.severity is Severity.ERROR)
-        warning_count = sum(1 for d in diagnostics if d.severity is Severity.WARNING)
+        # Counts reflect the whole report even when --quiet hides warnings.
+        error_count = sum(1 for d in report.diagnostics if d.severity is Severity.ERROR)
+        warning_count = sum(1 for d in report.diagnostics if d.severity is Severity.WARNING)
         lines.append(f"{error_count} errors, {warning_count} warnings in {seconds}s")
         return "\n".join(lines)
 

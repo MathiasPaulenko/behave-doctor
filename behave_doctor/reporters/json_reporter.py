@@ -26,7 +26,11 @@ class JsonReporter:
     def format(self, report: ProjectReport) -> str:
         """Format a ``ProjectReport`` as a stable JSON string."""
         payload: dict[str, Any] = {
-            "project_path": str(report.project_path),
+            "project_path": (
+                report.project_path.as_posix()
+                if isinstance(report.project_path, Path)
+                else str(report.project_path)
+            ),
             "scanned_at": report.scanned_at.isoformat(),
             "scan_duration_ms": report.scan_duration_ms,
             "exit_code": report.exit_code,

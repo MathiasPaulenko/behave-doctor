@@ -80,7 +80,10 @@ def build_report(
     start = time.perf_counter()
     scan_errors: list[tuple[Path, str]] = []
     project = scan_features(project_path, config, errors=scan_errors)
-    step_definitions = scan_steps((project_path / config.steps_dir).resolve(), config)
+    step_errors: list[tuple[Path, str]] = []
+    step_definitions = scan_steps(
+        (project_path / config.steps_dir).resolve(), config, errors=step_errors
+    )
     graph = build_graph(project, step_definitions)
 
     context = RuleContext(
@@ -89,6 +92,7 @@ def build_report(
         dependency_graph=graph,
         config=config,
         scan_errors=scan_errors,
+        step_scan_errors=step_errors,
     )
     rules = get_all_rules()
     diagnostics = run_rules(context, rules, rule_ids=rule_ids, exclude_ids=exclude_ids)

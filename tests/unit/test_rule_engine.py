@@ -127,3 +127,31 @@ def test_registry_get_all_rules_returns_instances() -> None:
     assert ids == {"BDX01", "BDX02"}
     assert all(isinstance(r, Rule) for r in rules)
     clear_registry()
+
+
+def test_get_rule_is_case_insensitive() -> None:
+    from behave_doctor.rules import get_rule
+
+    assert get_rule("BD301") is not None
+    assert get_rule("bd301") is not None
+    assert get_rule("bd301").id == "BD301"
+    assert get_rule("nope") is None
+
+
+def test_rule_overrides_match_case_insensitively() -> None:
+    """A ``DoctorConfig`` built by hand with lower-case rule keys must still
+    apply ``enabled`` and parameter overrides."""
+    from behave_doctor.rules.base import _rule_overrides
+
+    cfg = DoctorConfig(rules={"bd401": {"max_steps": 3}})  # type: ignore[dict-item]
+    assert _rule_overrides("BD401", cfg) == {"max_steps": 3}
+    assert _rule_overrides("BD999", cfg) is None
+
+
+def test_empty_rule_id_list_runs_all_rules() -> None:
+    """``rule_ids=[]`` must behave like ``None`` — an empty allowlist would
+    otherwise silently disable every rule and report a clean project."""
+    context = _context()
+    diagnostics_all = run_rules(context, get_all_rules())
+    diagnostics_empty = run_rules(context, get_all_rules(), rule_ids=[])
+    assert len(diagnostics_empty) == len(diagnostics_all)

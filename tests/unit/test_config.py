@@ -119,3 +119,36 @@ def test_from_pyproject_rule_override_can_be_boolean(tmp_path: Path) -> None:
     config = DoctorConfig.from_pyproject(pyproject)
     assert config.rules["BD101"] == {"enabled": False}
     assert config.rules["BD102"] == {"enabled": True}
+
+
+def test_config_coerces_string_fields() -> None:
+    cfg = DoctorConfig(exclude_paths="vendor/**", exclude_tags="wip")  # type: ignore[arg-type]
+    assert cfg.exclude_paths == ["vendor/**"]
+    assert cfg.exclude_tags == ["wip"]
+    cfg = DoctorConfig(min_severity="Warning")  # type: ignore[arg-type]
+    assert cfg.min_severity is Severity.WARNING
+
+
+def test_config_coerces_path_like_dirs() -> None:
+    cfg = DoctorConfig(features_dir=Path("bdd"), steps_dir=Path("bdd/steps"))  # type: ignore[arg-type]
+    assert cfg.features_dir == "bdd"
+    assert cfg.steps_dir == "bdd/steps" or cfg.steps_dir == r"bdd\steps"
+
+
+def test_from_pyproject_malformed_tool_section(tmp_path: Path) -> None:
+    """A non-table ``tool`` or ``behave-doctor`` value must not crash."""
+    for content in ('tool = "x"\n', '[tool]\nbehave-doctor = "x"\n'):
+        f = tmp_path / "pyproject.toml"
+        f.write_text(content, encoding="utf-8")
+        assert DoctorConfig.from_pyproject(f) == DoctorConfig()
+
+
+def test_config_coerces_non_string_pattern_elements() -> None:
+    """Non-string entries (e.g. TOML ``exclude_paths = [123]``) must not
+    reach ``Path.match`` — it raises ``TypeError`` for them."""
+    cfg = DoctorConfig(exclude_paths=[123, "legacy/**"], exclude_tags=[None, "wip"])  # type: ignore[list-item]
+    assert cfg.exclude_paths == ["123", "legacy/**"]
+    assert cfg.exclude_tags == ["None", "wip"]
+    # And exclusion matching still works without crashing.
+    assert cfg.is_excluded(Path("features/legacy/old.feature"))
+    assert not cfg.is_excluded(Path("features/new.feature"))

@@ -38,6 +38,7 @@ app = typer.Typer(
     help="Static analysis and diagnostics for Behave BDD suites.",
     no_args_is_help=False,
     add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
@@ -76,7 +77,10 @@ def _load_config(
 def _parse_id_list(value: str | None) -> list[str] | None:
     if value is None:
         return None
-    return [item.strip() for item in value.split(",") if item.strip()]
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    # An empty/blank value means "not specified" — returning an empty list
+    # would be an allowlist of nothing and silently disable every rule.
+    return items or None
 
 
 def _emit(output: str, output_file: str | None) -> None:
@@ -147,7 +151,7 @@ def scan(
 
     if severity is not None:
         try:
-            min_severity = Severity(severity.lower())
+            min_severity = Severity(severity.strip().lower())
         except ValueError:
             valid = ", ".join(s.value for s in Severity)
             typer.echo(f"Error: invalid severity {severity!r}. Valid: {valid}.", err=True)
@@ -155,12 +159,19 @@ def scan(
     else:
         min_severity = None
 
+    rule_ids = _parse_id_list(rules)
+    exclude_ids = _parse_id_list(exclude_rules)
+    known_ids = {rule.id.upper() for rule in get_all_rules()}
+    for rid in (rule_ids or []) + (exclude_ids or []):
+        if rid.upper() not in known_ids:
+            typer.echo(f"Warning: unknown rule ID {rid!r}; ignoring.", err=True)
+
     try:
         report = build_report(
             project_path,
             cfg,
-            rule_ids=_parse_id_list(rules),
-            exclude_ids=_parse_id_list(exclude_rules),
+            rule_ids=rule_ids,
+            exclude_ids=exclude_ids,
             min_severity=min_severity,
         )
     except ScanError as exc:
@@ -238,7 +249,7 @@ def stats(
     typer.echo(f"Step definitions:        {s.step_definitions}")
     typer.echo(f"Tags:                    {s.tags}")
     typer.echo(f"Total tag usages:        {s.total_tag_usages}")
-    typer.echo(f"Avg steps/scenario:      {s.average_steps_per_scenario}")
+    typer.echo(f"Avg steps/scenario:      {s.average_steps_per_scenario:.1f}")
     typer.echo(f"Unused step definitions: {s.unused_step_definitions}")
     typer.echo(f"Undefined steps:         {s.undefined_steps}")
 
@@ -315,6 +326,13 @@ def impact(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     _emit(formatted, output)
+    if result.scan_errors:
+        # Unparseable files mean the affected-scenario list may be
+        # incomplete — fail so CI does not skip tests it should run.
+        for error_path, message in result.scan_errors:
+            typer.echo(f"Warning: could not parse {error_path}: {message}", err=True)
+        typer.echo("Error: impact analysis is incomplete due to scan errors.", err=True)
+        raise typer.Exit(code=1)
     raise typer.Exit(code=0)
 
 

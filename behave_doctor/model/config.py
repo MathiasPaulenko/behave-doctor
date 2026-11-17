@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,16 +32,43 @@ class DoctorConfig:
     exclude_paths: list[str] = field(default_factory=list)
     exclude_tags: list[str] = field(default_factory=list)
 
-    def is_excluded(self, path: Path) -> bool:
+    def __post_init__(self) -> None:
+        # Tolerate common construction mistakes: a bare string is one
+        # element, not an iterable of characters, and Path objects are fine
+        # for directory fields.
+        self.features_dir = str(self.features_dir)
+        self.steps_dir = str(self.steps_dir)
+        if isinstance(self.min_severity, str):
+            self.min_severity = Severity(self.min_severity.strip().lower())
+        if isinstance(self.exclude_paths, str):
+            self.exclude_paths = [self.exclude_paths]
+        if isinstance(self.exclude_tags, str):
+            self.exclude_tags = [self.exclude_tags]
+        # Glob patterns must be strings — a TOML array like ``[123]`` would
+        # otherwise crash ``Path.match`` with ``TypeError`` during the scan.
+        self.exclude_paths = [str(p) for p in self.exclude_paths]
+        self.exclude_tags = [str(t) for t in self.exclude_tags]
+        # Rule IDs are upper-case (``BD301``); normalise keys so hand-built
+        # configs match the same way ``from_pyproject`` normalised them.
+        if isinstance(self.rules, dict):
+            self.rules = {str(k).upper(): v for k, v in self.rules.items()}
+
+    def is_excluded(self, path: Path, *, within: Path | None = None) -> bool:
         """Return ``True`` if ``path`` matches any configured exclude glob pattern.
 
         Both the path itself and each of its parent directories are checked
         so that directory-level patterns (``"excluded/**"``) and file-level
         patterns (``"*.feature"``) both work.
+
+        When ``within`` is given, ancestors are only checked down to (and
+        excluding) that directory — otherwise a pattern could silently
+        exclude the whole project by matching a parent directory of the
+        scan root (e.g. ``"build"`` when the project lives under
+        ``C:\\build\\project``).
         """
         if not self.exclude_paths:
             return False
-        parts = [path, *path.parents]
+        parts = [path, *itertools.takewhile(lambda parent: parent != within, path.parents)]
         for pattern in self.exclude_paths:
             if not pattern:
                 continue
@@ -69,6 +97,8 @@ class DoctorConfig:
             FileNotFoundError: If ``path`` does not exist.
             IsADirectoryError: If ``path`` is a directory, not a file.
             ValueError: If ``min_severity`` is not a valid severity name.
+            tomllib.TOMLDecodeError: If the file is not valid TOML
+                (a subclass of ``ValueError``).
         """
         if path is None:
             msg = "from_pyproject() requires a Path argument, got None."
@@ -81,8 +111,11 @@ class DoctorConfig:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
 
-        section = data.get("tool", {}).get("behave-doctor")
-        if not section:
+        tool = data.get("tool", {})
+        section = tool.get("behave-doctor") if isinstance(tool, dict) else None
+        if not isinstance(section, dict):
+            # Missing section, or a malformed TOML shape like
+            # ``tool = "x"`` / ``behave-doctor = "x"`` — treat as defaults.
             return cls()
 
         features_dir = str(section.get("features_dir", "features/"))
@@ -105,18 +138,14 @@ class DoctorConfig:
                     merged["enabled"] = overrides
                 elif isinstance(overrides, dict):
                     merged.update(overrides)
-                rules[str(rule_id)] = merged
+                # Normalise to upper-case so ``rules.bd301`` matches ``BD301``.
+                rules[str(rule_id).upper()] = merged
 
         # Read exclude_paths and exclude_tags from both the top level and
         # the [tool.behave-doctor.exclude] sub-table. Both sources are merged.
         def _as_str_list(value: Any) -> list[str]:
             if isinstance(value, str):
                 return [value]
-            if isinstance(value, (list, tuple)):
-                return [str(item) for item in value]
-            return []
-
-        def _as_list(value: Any) -> list[str]:
             if isinstance(value, (list, tuple)):
                 return [str(item) for item in value]
             return []
@@ -130,8 +159,8 @@ class DoctorConfig:
         else:
             sub_paths = []
             sub_tags = []
-        raw_paths = _as_str_list(top_paths) + _as_list(sub_paths)
-        raw_tags = _as_str_list(top_tags) + _as_list(sub_tags)
+        raw_paths = _as_str_list(top_paths) + _as_str_list(sub_paths)
+        raw_tags = _as_str_list(top_tags) + _as_str_list(sub_tags)
         exclude_paths = [str(p) for p in raw_paths]
         exclude_tags = [str(t) for t in raw_tags]
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import re
+import tokenize
 from pathlib import Path
 from typing import Any
 
@@ -120,9 +121,13 @@ def _scenario_steps(
     """Return the typed steps of a scenario, expanding Scenario Outline rows."""
     if isinstance(scenario, ScenarioOutline) and scenario.examples:
         steps: list[Step] = []
-        for row in scenario.expand():
-            expanded = [_expand_step(step, row) for step in scenario.steps]
-            steps.extend(_attach_step_types(expanded, keyword_map, previous))
+        for example in scenario.examples:
+            table = getattr(example, "table", None)
+            if table is None:
+                continue
+            for row in table.iter_dicts():
+                expanded = [_expand_step(step, row) for step in scenario.steps]
+                steps.extend(_attach_step_types(expanded, keyword_map, previous))
         return steps
     return _attach_step_types(list(getattr(scenario, "steps", [])), keyword_map, previous)
 
@@ -162,12 +167,13 @@ def _iter_feature_steps(feature: Any) -> list[Step]:
 
 
 def normalize_step_text(text: str) -> str:
-    """Normalize step text for matching: collapse whitespace.
+    """Normalize step text for matching.
 
-    ``step.name`` never contains the Gherkin keyword, so only whitespace is
-    normalised — behave matches step names verbatim.
+    ``step.name`` never contains the Gherkin keyword, and behave matches
+    step names verbatim — internal whitespace is significant, so only
+    surrounding whitespace is stripped.
     """
-    return re.sub(r"\s+", " ", text.strip())
+    return text.strip()
 
 
 def _definition_matches(definition: StepDefinition, text: str) -> bool:
@@ -193,33 +199,54 @@ def _match_step(
     ``when`` or ``then``) or universal ``step`` definitions. This mirrors Behave's
     step registry behaviour and avoids false positives when the same pattern is
     reused across keywords.
+
+    Behave's ``StepRegistry.find_match`` iterates the keyword registry first
+    and the universal ``step`` registry second, returning the first match —
+    so the selected definition is the first keyword match, not the first
+    file-scan match.
     """
-    text = normalize_step_text(getattr(step, "name", "") or getattr(step, "text", ""))
+    text = normalize_step_text(getattr(step, "name", "") or "")
     step_type = getattr(step, "step_type", "")
-    matches = [
-        d
-        for d in definitions
-        if d.keyword == step_type or d.keyword == "step"
-        if _definition_matches(d, text)
-    ]
+    keyword_matches: list[StepDefinition] = []
+    step_matches: list[StepDefinition] = []
+    for d in definitions:
+        if not _definition_matches(d, text):
+            continue
+        if d.keyword == step_type:
+            keyword_matches.append(d)
+        elif d.keyword == "step":
+            step_matches.append(d)
+    matches = keyword_matches + step_matches
     if not matches:
         return StepMatch(step=step, step_definition=None, ambiguous=False)
-    if len(matches) == 1:
-        return StepMatch(step=step, step_definition=matches[0], ambiguous=False)
-    return StepMatch(step=step, step_definition=matches[0], ambiguous=True)
+    return StepMatch(
+        step=step,
+        step_definition=matches[0],
+        ambiguous=len(matches) > 1,
+        matches=tuple(matches),
+    )
 
 
-def _relative_import_target(level: int, module: str | None, current_module: str) -> str | None:
+def _relative_import_target(
+    level: int,
+    module: str | None,
+    current_module: str,
+    *,
+    is_package_init: bool = False,
+) -> str | None:
     """Resolve the dotted target of a relative ``ImportFrom``.
 
     ``current_module`` is the dotted name of the file containing the import,
-    relative to the steps directory. Returns ``None`` when the import goes
+    relative to the steps directory. ``is_package_init`` marks ``__init__.py``
+    files, whose ``from . import x`` refers to the package itself — one level
+    less than a regular module file. Returns ``None`` when the import goes
     above the steps directory.
     """
     parts = current_module.split(".")
-    if level > len(parts):
+    depth = level - 1 if is_package_init else level
+    if depth > len(parts):
         return None
-    package = ".".join(parts[:-level]) if level < len(parts) else ""
+    package = ".".join(parts[: len(parts) - depth]) if depth else current_module
     if module:
         return f"{package}.{module}" if package else module
     # `from . import a` – the module is in the alias name, resolved below.
@@ -230,8 +257,11 @@ def _extract_module_imports(file: Path, current_module: str = "") -> set[str]:
     """Parse a Python file and return the set of modules it imports."""
     imports: set[str] = set()
     try:
-        tree = ast.parse(file.read_text(encoding="utf-8-sig"), filename=str(file))
-    except (SyntaxError, OSError, UnicodeError):
+        # ``tokenize.open`` matches interpreter decoding (BOM + coding cookie).
+        with tokenize.open(file) as handle:
+            tree = ast.parse(handle.read(), filename=str(file))
+    except (SyntaxError, OSError, UnicodeError, ValueError):
+        # ValueError: ast.parse raises it for null bytes on Python < 3.12.
         return imports
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -241,7 +271,12 @@ def _extract_module_imports(file: Path, current_module: str = "") -> set[str]:
             if node.module == "__future__":
                 continue
             if node.level:
-                base = _relative_import_target(node.level, node.module, current_module)
+                base = _relative_import_target(
+                    node.level,
+                    node.module,
+                    current_module,
+                    is_package_init=file.name == "__init__.py",
+                )
                 if base is None:
                     continue
                 if node.module:
@@ -290,6 +325,10 @@ def build_graph(
             continue
         module_name = definition.module
         seen_files[definition.file] = module_name
-        graph.module_imports[module_name] = _extract_module_imports(definition.file, module_name)
+        # Two files can collapse to the same module name (``a.py`` and
+        # ``a/__init__.py``): merge their imports rather than overwrite.
+        graph.module_imports.setdefault(module_name, set()).update(
+            _extract_module_imports(definition.file, module_name)
+        )
 
     return graph

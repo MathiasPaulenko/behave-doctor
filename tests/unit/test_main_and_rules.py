@@ -18,7 +18,9 @@ def test_python_m_behave_doctor_version() -> None:
         check=False,
     )
     assert result.returncode == 0
-    assert "1.4.0" in result.stdout
+    from importlib.metadata import version as metadata_version
+
+    assert metadata_version("behave-doctor") in result.stdout
 
 
 def test_python_m_behave_doctor_scan() -> None:

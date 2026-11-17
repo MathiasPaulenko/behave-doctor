@@ -31,6 +31,8 @@ def format_report(
     Raises:
         ValueError: If ``fmt`` is not a supported format.
     """
+    if not fmt or not fmt.strip():
+        raise ValueError("Format must be a non-empty string. Use text, json, or sarif.")
     fmt = fmt.strip().lower()
     if fmt == "text":
         return TextReporter(use_color=use_color, quiet=quiet, verbose=verbose).format(report)

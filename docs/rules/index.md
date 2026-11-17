@@ -39,8 +39,8 @@ optionally configurable thresholds.
 | BD301 | unused-step-def             | warning  | Coverage     | No                                                 |
 | BD302 | undefined-step              | error    | Coverage     | No                                                 |
 | BD303 | unused-tag                  | info     | Coverage     | `exclude_tags` (global)                            |
-| BD304 | orphan-scenario             | warning  | Coverage     | No                                                 |
-| BD305 | unparseable-feature          | error    | Coverage     | No                                                 |
+| BD304 | orphan-scenario             | warning  | Coverage     | `exclude_tags` (global)                            |
+| BD305 | unparseable-file            | error    | Coverage     | No                                                 |
 | BD401 | scenario-too-many-steps     | warning  | Complexity   | `max_steps` (default 10)                           |
 | BD402 | step-too-many-params        | warning  | Complexity   | `max_params` (default 5)                           |
 | BD403 | feature-too-large           | warning  | Complexity   | `max_lines` (default 300)                          |

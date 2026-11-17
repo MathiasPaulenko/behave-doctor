@@ -40,7 +40,7 @@ step definitions with the AST — never importing or executing them.
   - **Quality** (BD201-205) — duplicate definitions, missing tags, oversized
     features, inconsistent tag casing, ambiguous step matches.
   - **Coverage** (BD301-305) — unused step definitions, undefined steps,
-    unused tags, orphan scenarios, unparseable feature files.
+    unused tags, orphan scenarios, unparseable source files.
   - **Complexity** (BD401-403) — scenario step count, step parameter count,
     feature file size.
   - **Dependencies** (BD501-503) — circular imports, unused imports, missing

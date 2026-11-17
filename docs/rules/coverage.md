@@ -144,13 +144,13 @@ filtering purposes — no tag filter will select them along with other
 scenarios.
 
 Scenarios with no tags are skipped (see [BD202](quality.md#bd202-scenario-no-tags)
-for that).
+for that). Scenarios and tags listed in `exclude_tags` are skipped.
 
-| Attribute    | Value          |
-| ------------ | -------------- |
-| Severity     | warning        |
-| Category     | Coverage       |
-| Configurable | No             |
+| Attribute    | Value                     |
+| ------------ | ------------------------- |
+| Severity     | warning                   |
+| Category     | Coverage                  |
+| Configurable | `exclude_tags` (global)   |
 
 ### What it detects
 
@@ -182,12 +182,13 @@ BD304  WARNING  Scenario "Guest checkout" has only unique tags ['@checkout', '@g
 
 ---
 
-## BD305 — unparseable-feature
+## BD305 — unparseable-file
 
-Finds feature files that could not be parsed and were skipped during the
-scan. Behave aborts the entire run when a feature file fails to parse, so a
-file that is silently skipped here would break the suite at runtime — and
-every scenario it contains is invisible to all other rules.
+Finds feature files and Python step files that could not be parsed and
+were skipped during the scan. Behave aborts the entire run when a feature
+file fails to parse or a step module fails to import, so a file that is
+silently skipped here would break the suite at runtime — and everything
+it contains is invisible to all other rules.
 
 | Attribute    | Value          |
 | ------------ | -------------- |

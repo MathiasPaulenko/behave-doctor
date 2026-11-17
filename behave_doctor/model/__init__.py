@@ -60,8 +60,11 @@ def scenario_tag_sets(scenario: Any) -> list[list[Any]]:
     if isinstance(scenario, ScenarioOutline):
         sets: list[list[Any]] = []
         for example in getattr(scenario, "examples", []):
+            table = getattr(example, "table", None)
+            if table is None:
+                continue
             combined = base + list(example.tags)
-            for _ in example.table:
+            for _ in table:
                 sets.append(combined)
         return sets or [base]
     return [base]
@@ -90,7 +93,9 @@ def _scenario_count(scenario: Any) -> int:
     """
     if isinstance(scenario, ScenarioOutline):
         examples = getattr(scenario, "examples", [])
-        count = sum(sum(1 for _ in ex.table) for ex in examples)
+        count = sum(
+            sum(1 for _ in ex.table) for ex in examples if getattr(ex, "table", None) is not None
+        )
         return max(count, 1)
     return 1
 

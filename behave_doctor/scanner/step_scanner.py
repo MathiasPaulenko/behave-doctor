@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import logging
 import re
+import tokenize
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from behave.matchers import (
 
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.step_definition import StepDefinition
+from behave_doctor.scanner.project_scanner import _walk_files
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +55,8 @@ _STEP_MATCHERS: dict[str, type[Matcher]] = {
 _DEFAULT_MATCHER = "parse"
 
 # Functions that change the active step-matcher when called at module level.
-_MATCHER_FUNCS = {"use_step_matcher", "use_default_step_matcher"}
+# ``step_matcher`` is Behave's deprecated alias for ``use_step_matcher``.
+_MATCHER_FUNCS = {"use_step_matcher", "use_default_step_matcher", "step_matcher"}
 
 # Regex to find ``{name}``, ``{name:type}`` and anonymous ``{}`` placeholders
 # in parse/cfparse patterns.
@@ -117,8 +120,21 @@ def _compile_parse_expression(pattern: str) -> str:
 
 
 def _extract_placeholder_names(pattern: str) -> list[str]:
-    """Extract named placeholder names from a parse-style pattern."""
-    return [m.group(1) for m in _PLACEHOLDER_RE.finditer(pattern) if m.group(1)]
+    """Extract placeholder names from a parse-style pattern.
+
+    Anonymous ``{}`` placeholders become ``argN`` like behave does when it
+    forwards them as positional arguments to the step function.
+    """
+    out: list[str] = []
+    anonymous = 0
+    for m in _PLACEHOLDER_RE.finditer(pattern):
+        name = m.group(1)
+        if name:
+            out.append(name)
+        else:
+            out.append(f"arg{anonymous}")
+            anonymous += 1
+    return out
 
 
 def _wildcard_converter() -> Any:
@@ -298,6 +314,60 @@ def _first_string_arg(call: ast.Call) -> str | None:
     return None
 
 
+def _is_main_guard(test: ast.expr) -> bool:
+    """``True`` for the ``if __name__ == "__main__":`` idiom (either order).
+
+    The guarded block never executes while the module is being imported —
+    names bound there do not exist at runtime, and calls inside do not run.
+    """
+    if (
+        not isinstance(test, ast.Compare)
+        or len(test.ops) != 1
+        or not isinstance(test.ops[0], ast.Eq)
+        or len(test.comparators) != 1
+    ):
+        return False
+    left, right = test.left, test.comparators[0]
+    return any(
+        isinstance(name, ast.Name)
+        and name.id == "__name__"
+        and isinstance(other, ast.Constant)
+        and other.value == "__main__"
+        for name, other in ((left, right), (right, left))
+    )
+
+
+class _ModuleScopeCollector(ast.NodeVisitor):
+    """Collect nodes bound at module scope, skipping function/class bodies.
+
+    Only names bound at module level are visible to the module-level
+    decorators that register step definitions — an ``import`` inside a
+    function body never reaches them.
+    """
+
+    def __init__(self) -> None:
+        self.nodes: list[ast.AST] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        self.nodes.append(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+        self.nodes.append(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        self.nodes.append(node)
+
+    def visit_If(self, node: ast.If) -> None:  # noqa: N802
+        if _is_main_guard(node.test):
+            self.nodes.append(node)
+            return  # never runs at import time
+        self.generic_visit(node)
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self.nodes.append(node)
+        super().generic_visit(node)
+
+
 def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], set[str], dict[str, str], set[str]]:
     """Build maps describing how the ``behave`` package is imported.
 
@@ -309,16 +379,18 @@ def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], set[str], dict[str,
       (e.g. ``{"behave", "b"}``).
     * ``behave_names``: local name → original name for any symbol imported
       from ``behave`` or its submodules (e.g. ``{"use_step_matcher": ...}``).
-    * ``shadowed_names``: names imported from non-behave modules, so that
-      e.g. ``from hypothesis import given`` is not mistaken for a step
-      decorator.
+    * ``shadowed_names``: names bound to non-behave things at module scope,
+      so that e.g. ``from hypothesis import given`` or a local
+      ``def given(...)`` is not mistaken for a step decorator.
     """
     alias_map: dict[str, str] = {}
     module_aliases: set[str] = set()
     behave_names: dict[str, str] = {}
     shadowed_names: set[str] = set()
 
-    for node in ast.walk(tree):
+    collector = _ModuleScopeCollector()
+    collector.visit(tree)
+    for node in collector.nodes:
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
             if module == "__future__":
@@ -331,6 +403,7 @@ def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], set[str], dict[str,
                     alias_map.setdefault(base, _STEP_KEYWORDS[base])
                 behave_names.setdefault("use_step_matcher", "use_step_matcher")
                 behave_names.setdefault("use_default_step_matcher", "use_default_step_matcher")
+                behave_names.setdefault("step_matcher", "step_matcher")
             for alias in node.names:
                 if alias.name == "*":
                     continue
@@ -352,6 +425,13 @@ def _build_alias_map(tree: ast.AST) -> tuple[dict[str, str], set[str], dict[str,
                     module_aliases.add(local)
                 else:
                     shadowed_names.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            shadowed_names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                shadowed_names.update(t.id for t in ast.walk(target) if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            shadowed_names.add(node.target.id)
 
     return alias_map, module_aliases, behave_names, shadowed_names
 
@@ -367,7 +447,8 @@ class _MatcherEventCollector(ast.NodeVisitor):
     def __init__(self, behave_names: dict[str, str], module_aliases: set[str]) -> None:
         self._behave_names = behave_names
         self._module_aliases = module_aliases
-        self.events: list[tuple[int, str]] = []
+        # (lineno, function name, matcher name argument or None)
+        self.events: list[tuple[int, str, str | None]] = []
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
         return  # nested scope — calls here do not run at import time
@@ -378,11 +459,16 @@ class _MatcherEventCollector(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
         return
 
-    def visit_Expr(self, node: ast.Expr) -> None:  # noqa: N802
-        if not isinstance(node.value, ast.Call):
-            return
-        call = node.value
-        func = call.func
+    def visit_Lambda(self, node: ast.Lambda) -> None:  # noqa: N802
+        return  # deferred body — calls do not run at import time
+
+    def visit_If(self, node: ast.If) -> None:  # noqa: N802
+        if _is_main_guard(node.test):
+            return  # never runs at import time
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+        func = node.func
         original: str | None = None
         if isinstance(func, ast.Name):
             original = self._behave_names.get(func.id)
@@ -392,11 +478,9 @@ class _MatcherEventCollector(ast.NodeVisitor):
             and func.value.id in self._module_aliases
         ):
             original = func.attr
-        if original not in _MATCHER_FUNCS:
-            return
-        name = self._call_name_arg(call)
-        if name:
-            self.events.append((call.lineno, name))
+        if original in _MATCHER_FUNCS:
+            self.events.append((node.lineno, original, self._call_name_arg(node)))
+        self.generic_visit(node)
 
     @staticmethod
     def _call_name_arg(call: ast.Call) -> str | None:
@@ -418,20 +502,37 @@ class _MatcherEventCollector(ast.NodeVisitor):
 
 def _matcher_events(
     tree: ast.AST, behave_names: dict[str, str], module_aliases: set[str]
-) -> list[tuple[int, str]]:
-    """Collect ``use_step_matcher(name)`` calls with their source line numbers."""
+) -> list[tuple[int, str, str | None]]:
+    """Collect step-matcher calls with their source line numbers.
+
+    Each event is ``(lineno, function_name, name_arg)``. ``name_arg`` is
+    ``None`` for a bare ``use_default_step_matcher()`` reset call.
+    """
     collector = _MatcherEventCollector(behave_names, module_aliases)
     collector.visit(tree)
-    return sorted(collector.events)
+    # Stable sort by line only — two calls on the same line keep source order.
+    return sorted(collector.events, key=lambda event: event[0])
 
 
-def _matcher_at(line: int, events: list[tuple[int, str]]) -> str:
-    """Return the matcher name in effect at ``line`` given ordered events."""
+def _matcher_at(line: int, events: list[tuple[int, str, str | None]]) -> str:
+    """Return the matcher name in effect at ``line`` given ordered events.
+
+    Mirrors ``behave.matchers``: ``use_step_matcher(name)`` switches the
+    current matcher, ``use_default_step_matcher(name)`` additionally makes it
+    the new default, and a bare ``use_default_step_matcher()`` resets the
+    current matcher to the default.
+    """
     current = _DEFAULT_MATCHER
-    for lineno, name in events:
+    default = _DEFAULT_MATCHER
+    for lineno, func, name in events:
         if lineno >= line:
             break
-        current = name
+        if func == "use_default_step_matcher" and name is None:
+            current = default
+        elif name is not None:
+            current = name
+            if func == "use_default_step_matcher":
+                default = name
     if current not in _STEP_MATCHERS:
         logger.warning("Unknown step matcher %r; falling back to 'parse'.", current)
         return _DEFAULT_MATCHER
@@ -467,9 +568,15 @@ class _StepFunctionCollector(ast.NodeVisitor):
 
 
 def _module_dotted_path(file: Path, steps_path: Path) -> str:
-    """Return the dotted module path of ``file`` relative to ``steps_path``."""
+    """Return the dotted module path of ``file`` relative to ``steps_path``.
+
+    ``pkg/__init__.py`` maps to ``pkg`` so the module name matches the
+    dotted name an ``import pkg`` statement would produce.
+    """
     relative = file.relative_to(steps_path)
     parts = list(relative.with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
     return ".".join(parts)
 
 
@@ -477,12 +584,20 @@ def _step_func_stub() -> None:
     """Placeholder function for matcher construction (never called)."""
 
 
-def scan_steps(steps_path: Path, config: DoctorConfig) -> list[StepDefinition]:
+def scan_steps(
+    steps_path: Path,
+    config: DoctorConfig,
+    errors: list[tuple[Path, str]] | None = None,
+) -> list[StepDefinition]:
     """Scan a steps directory and return all discovered step definitions.
 
     Args:
         steps_path: Directory containing step definition ``.py`` files.
         config: Configuration (used for ``exclude_paths`` filtering).
+        errors: Optional list that receives ``(file, message)`` pairs for
+            ``.py`` files that fail to parse. Failures are also logged as
+            warnings — Behave aborts when it cannot import a step module,
+            so callers should surface these errors rather than ignore them.
 
     Returns:
         A list of ``StepDefinition`` objects. If ``steps_path`` does not
@@ -493,14 +608,20 @@ def scan_steps(steps_path: Path, config: DoctorConfig) -> list[StepDefinition]:
         return []
 
     definitions: list[StepDefinition] = []
-    for py_file in sorted(steps_path.rglob("*.py")):
-        if config.is_excluded(py_file):
+    for py_file in sorted(_walk_files(steps_path, "*.py", errors)):
+        if config.is_excluded(py_file, within=steps_path):
             continue
         try:
-            source = py_file.read_text(encoding="utf-8-sig")
+            # ``tokenize.open`` reads the file like the interpreter does:
+            # BOM handling plus ``# -*- coding: -*-`` declarations.
+            with tokenize.open(py_file) as handle:
+                source = handle.read()
             tree = ast.parse(source, filename=str(py_file))
-        except (SyntaxError, OSError, UnicodeError) as exc:
+        # ValueError: ast.parse raises it for null bytes on Python < 3.12.
+        except (SyntaxError, OSError, UnicodeError, ValueError) as exc:
             logger.warning("Could not parse %s: %s. Skipping this file.", py_file, exc)
+            if errors is not None:
+                errors.append((py_file, str(exc)))
             continue
 
         alias_map, module_aliases, behave_names, shadowed = _build_alias_map(tree)

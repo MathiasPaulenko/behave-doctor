@@ -38,7 +38,10 @@ runs:
     - name: Fetch base for diff
       if: inputs.mode == 'impact'
       shell: bash
-      run: git fetch --depth=50 origin "${{ inputs.base }}" || git fetch --depth=50 origin main
+      run: |
+        BASE="${{ inputs.base }}"
+        [ -z "$BASE" ] && BASE="main"
+        git fetch --depth=50 origin "$BASE" || git fetch --depth=50 origin main
 
     - name: Run scan
       if: inputs.mode == 'scan'
@@ -50,10 +53,18 @@ runs:
       if: inputs.mode == 'impact'
       shell: bash
       run: |
-        CHANGED=$(git diff --name-only "${{ inputs.base }}...HEAD" | grep -E '\.(py|feature)$' | tr '\n' ' ' || true)
+        # --diff-filter=d drops deleted files — behave-doctor requires the
+        # changed files to exist on disk.
+        BASE="${{ inputs.base }}"
+        [ -z "$BASE" ] && BASE="origin/main"
+        CHANGED=$(git diff --name-only --diff-filter=d "$BASE...HEAD" | grep -E '\.(py|feature)$' || true)
         echo "Changed files: $CHANGED"
-        NAMES=$(behave-doctor impact "${{ inputs.path }}" --changed-files $CHANGED --format names ${{ inputs.args }} || true)
-        echo "names<<EOF" >> "$GITHUB_OUTPUT"
+        ARGS=()
+        while IFS= read -r f; do [ -n "$f" ] && ARGS+=(-c "$f"); done <<< "$CHANGED"
+        NAMES=$(behave-doctor impact "${{ inputs.path }}" "${ARGS[@]}" --format names ${{ inputs.args }} || true)
+        # Unique delimiter so a scenario name can never close the heredoc.
+        DELIM="bd_names_$$_$RANDOM"
+        echo "names<<$DELIM" >> "$GITHUB_OUTPUT"
         echo "$NAMES" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        echo "$DELIM" >> "$GITHUB_OUTPUT"
         echo "$NAMES"

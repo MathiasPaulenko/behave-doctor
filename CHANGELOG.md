@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Step text matching**: step names are now matched verbatim like Behave —
+  only surrounding whitespace is stripped (internal runs of spaces/tabs are
+  significant and were previously collapsed, causing false mismatches).
+- **Match selection order**: when several definitions match a step, the one
+  Behave would execute is now selected — keyword-registry definitions take
+  priority over `@step` definitions regardless of file order, matching
+  `StepRegistry.find_match`. All matching candidates are still recorded on
+  `StepMatch.matches` and reported by BD205.
+- **`use_default_step_matcher()`**: a bare call now resets the current matcher
+  to the default (it was silently ignored), `use_default_step_matcher(name)`
+  updates the default a later reset returns to, and the deprecated
+  `step_matcher()` alias is recognised.
+- **BD305 — unparseable-file**: now also reports Python step files that fail
+  to parse, not just feature files (renamed from `unparseable-feature`).
+- **BD502 — unused-import**: imports are no longer marked "used" just because
+  their name appears inside an arbitrary string literal (docstrings, step
+  patterns, log messages); only annotation positions (string annotations and
+  `# type:` comments) count.
+- **BD304 — orphan-scenario**: now honours `exclude_tags`.
+- **Tabless `Examples:` blocks**: an `Examples:` block with tags but no table
+  no longer causes the whole feature file to be dropped — Behave tolerates it
+  and generates zero scenarios from it.
+- **Impact analysis**: Scenario Outlines are expanded so typed patterns
+  (`{n:d}`) match concrete example values; all matching candidates are
+  considered, not just the runtime-selected one; `--changed-files` accepts
+  `.py`/`.feature` suffixes and `environment.py` case-insensitively.
+- **`exclude_paths` boundary**: patterns can no longer match ancestor
+  directories above the scan root (e.g. `build` excluding a project under
+  `C:\build\project` on Windows).
+- **`exclude_paths` on step files**: `is_excluded` is now applied with the
+  steps directory as the boundary for consistency.
+- **Module naming**: `pkg/__init__.py` resolves to module `pkg`, and imports
+  of files that collapse to the same module name are merged instead of
+  overwritten in the dependency graph.
+- **Step-file scanning**: `ast.parse` `ValueError` (null bytes on Python
+  < 3.12) is caught like `SyntaxError`, and only module-level imports are
+  treated as Behave aliases (function-local imports no longer mark
+  decorator names as Behave's).
+- **`python -m behave_doctor -h`**: `-h` now works as an alias for `--help`,
+  unknown rule IDs passed via `--rules`/`--exclude-rules` warn on stderr, and
+  `--severity` values are stripped before parsing.
+- **SARIF output**: `startLine` is clamped to >= 1 (SARIF requires it), and
+  DOT graph output escapes carriage returns in module names.
+- **`__version__`**: now derived from installed package metadata instead of a
+  hardcoded string that had drifted from `pyproject.toml`.
+- **`action.yml`**: the impact step passes repeated `--changed-files` flags so
+  multi-file diffs work (Typer `list[str]` options reject space-separated
+  values).
+- **`format_report` / `format_impact`**: empty or whitespace-only `fmt`
+  values now raise a clear `ValueError` instead of falling through.
+- **Feature file decoding**: feature files are decoded as plain UTF-8 like
+  `behave.parser.parse_file` — a UTF-8 BOM is now a parse error (BD305)
+  instead of being silently stripped, matching the runtime.
+- **Step file decoding**: `.py` files are read with `tokenize.open` so BOM
+  and `# -*- coding: -*-` declarations resolve exactly like the interpreter;
+  files that decode fine no longer get a false BD305.
+- **`exclude_paths` / `exclude_tags` coercion**: non-string elements (e.g.
+  `exclude_paths = [123]` in TOML) are coerced to strings instead of
+  crashing `Path.match` with `TypeError`.
+- **`if __name__ == "__main__"` blocks**: imports and `use_step_matcher`
+  calls guarded by the `__main__` idiom are ignored — they never run at
+  import time.
+- **Unreadable directories**: `os.walk` errors during scanning are logged,
+  surfaced as BD305 diagnostics, and no longer abort the whole walk.
+- **Rule overrides**: keys in ``config.rules`` are normalised to upper-case
+  so hand-built configs (``rules={"bd401": ...}``) behave like
+  ``from_pyproject`` output, and per-rule option lookups match
+  case-insensitively.
+- **`exclude` sub-table**: a bare string under
+  ``[tool.behave-doctor.exclude]`` ``paths``/``tags`` coerces to a
+  one-element list, matching the top-level ``exclude_paths``/``exclude_tags``
+  behaviour.
+- **`stats` output**: ``Avg steps/scenario`` is formatted to one decimal
+  instead of the raw float.
+
+### Added
+
+- **`ImpactResult.scan_errors`**: parse failures during impact analysis are
+  now exposed (text/JSON output) and `behave-doctor impact` exits 1 when the
+  result may be incomplete — a broken step file can no longer silently
+  under-report affected scenarios in CI.
+
 ## [1.5.1] - 2026-10-16
 
 ### Fixed

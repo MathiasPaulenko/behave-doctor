@@ -95,3 +95,61 @@ def test_bd503_with_some_definitions_does_not_duplicate_bd302() -> None:
     ctx = _ctx("undefined_steps_project")
     diagnostics = MissingStepModule().check(ctx)
     assert diagnostics == []
+
+
+def _bd502_ctx(tmp_path: Path, source: str) -> RuleContext:
+    steps = tmp_path / "features" / "steps"
+    steps.mkdir(parents=True, exist_ok=True)
+    (steps / "unused.py").write_text(source, encoding="utf-8")
+    project = scan_features(tmp_path, DoctorConfig())
+    step_defs = scan_steps(steps, DoctorConfig())
+    return RuleContext(
+        project=project,
+        step_definitions=step_defs,
+        dependency_graph=DependencyGraph(),
+        config=DoctorConfig(),
+    )
+
+
+def test_bd502_string_mentions_do_not_mark_import_used(tmp_path: Path) -> None:
+    """An import name occurring in a docstring or other string literal is
+    NOT a usage — only annotation positions (forward references) count."""
+    ctx = _bd502_ctx(
+        tmp_path,
+        '"""Module that talks about os and json."""\n'
+        "import os\n"
+        "from behave import given\n\n"
+        '@given("a step about os")\n'
+        "def step(ctx):\n"
+        '    print("os is cool")\n',
+    )
+    diagnostics = UnusedImport().check(ctx)
+    assert any(d.metadata["import"] == "os" for d in diagnostics)
+
+
+def test_bd502_forward_reference_annotation_counts_as_used(tmp_path: Path) -> None:
+    """Imports referenced only inside string annotations stay unreported."""
+    ctx = _bd502_ctx(
+        tmp_path,
+        "import typing\n"
+        "from behave import given\n\n"
+        'x: "typing.Optional[int]" = None\n\n'
+        '@given("a step")\n'
+        "def step(ctx):\n"
+        "    pass\n",
+    )
+    diagnostics = UnusedImport().check(ctx)
+    assert not any(d.metadata["import"] == "typing" for d in diagnostics)
+
+
+def test_bd502_return_annotation_counts_as_used(tmp_path: Path) -> None:
+    ctx = _bd502_ctx(
+        tmp_path,
+        "import helpers\n"
+        "from behave import given\n\n"
+        '@given("a step")\n'
+        'def step(ctx) -> "helpers.Result":\n'
+        "    pass\n",
+    )
+    diagnostics = UnusedImport().check(ctx)
+    assert not any(d.metadata["import"] == "helpers" for d in diagnostics)

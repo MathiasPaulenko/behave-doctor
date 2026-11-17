@@ -112,7 +112,7 @@ BD301  WARNING   coverage     unused-step-def  -  Step definition never matched 
 BD302  ERROR     coverage     undefined-step  -  Step in feature has no matching definition.
 BD303  INFO      coverage     unused-tag  -  Tag defined but never used in CI filters.
 BD304  WARNING   coverage     orphan-scenario  -  Scenario never selected by any tag filter (all tags unique).
-BD305  ERROR     coverage     unparseable-feature  -  Feature file could not be parsed; its scenarios were skipped.
+BD305  ERROR     coverage     unparseable-file  -  Source file could not be parsed; its contents were skipped.
 BD401  WARNING   complexity   scenario-too-many-steps  -  Scenario has more than N steps (default 10).
 BD402  WARNING   complexity   step-too-many-params  -  Step pattern has more than N parameters (default 5).
 BD403  WARNING   complexity   feature-too-large  -  Feature file has more than N lines (default 300).
@@ -212,7 +212,7 @@ behave-doctor impact [PATH] --changed-files FILES [OPTIONS]
 
 | Option                   | Default   | Description                                              |
 | ------------------------ | --------- | -------------------------------------------------------- |
-| `--changed-files FILES`  | required  | Comma-separated list of changed file paths.             |
+| `-c`, `--changed-files FILE` | required  | Changed file path. Repeat the option for multiple files. |
 | `--format FORMAT`        | `text`    | Output format: `text`, `json`, or `names`.               |
 | `-o`, `--output FILE`    | stdout    | Write report to a file instead of stdout.                |
 
@@ -221,7 +221,9 @@ behave-doctor impact [PATH] --changed-files FILES [OPTIONS]
 | Code | Meaning                                              |
 | ---- | ---------------------------------------------------- |
 | 0    | Success (even if no scenarios are affected).         |
-| 1    | One or more changed files do not exist.               |
+| 1    | One or more changed files do not exist, or files     |
+|      | failed to parse during the scan — the affected-      |
+|      | scenario list may be incomplete (fails closed).      |
 | 2    | Invalid format or scan error.                         |
 
 ### Examples
@@ -230,8 +232,8 @@ behave-doctor impact [PATH] --changed-files FILES [OPTIONS]
 # Which scenarios are affected by changes to login_steps.py?
 behave-doctor impact . --changed-files features/steps/login_steps.py
 
-# Multiple changed files
-behave-doctor impact . --changed-files src/auth.py,features/login.feature
+# Multiple changed files (repeat the option)
+behave-doctor impact . --changed-files src/auth.py --changed-files features/login.feature
 
 # Get scenario names for behave --name
 behave-doctor impact . --changed-files features/steps/login_steps.py --format names

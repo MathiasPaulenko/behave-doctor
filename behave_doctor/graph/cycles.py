@@ -6,7 +6,12 @@ from collections import deque
 
 
 def detect_cycles(module_imports: dict[str, set[str]]) -> list[list[str]]:
-    """Find all cycles in a directed module import graph using iterative DFS.
+    """Detect cycles in a directed module import graph using iterative DFS.
+
+    Every strongly connected component yields at least one reported cycle,
+    so any circular dependency is flagged. In dense graphs the DFS does not
+    enumerate every possible simple cycle — it reports each distinct cycle
+    it discovers once, which is what a lint rule needs.
 
     Args:
         module_imports: Mapping of module name → set of imported module names.

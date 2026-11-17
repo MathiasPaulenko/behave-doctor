@@ -11,7 +11,13 @@ Public API:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+
+try:
+    __version__ = version("behave-doctor")
+except PackageNotFoundError:  # pragma: no cover — running from a source tree
+    __version__ = "0.0.0"
 
 from behave_doctor.core import build_report
 from behave_doctor.impact import (
@@ -30,8 +36,6 @@ from behave_doctor.model.project_report import ProjectReport, ProjectStatistics
 from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.model.step_match import StepMatch
 from behave_doctor.rules.base import Rule
-
-__version__ = "1.4.0"
 
 
 def scan_project(

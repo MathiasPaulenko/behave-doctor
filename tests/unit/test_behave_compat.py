@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from behave_model import Metadata, Project
+
 from behave_doctor.graph.builder import build_graph
 from behave_doctor.model.config import DoctorConfig
 from behave_doctor.model.dependency_graph import DependencyGraph
 from behave_doctor.model.enums import Severity
+from behave_doctor.model.step_definition import StepDefinition
 from behave_doctor.rules.base import RuleContext
 from behave_doctor.rules.coverage import OrphanScenario, UnparseableFeature
 from behave_doctor.rules.quality import ScenarioNoTags
@@ -441,3 +444,340 @@ def test_future_import_in_module_imports(tmp_path: Path) -> None:
     py = tmp_path / "x.py"
     py.write_text("from __future__ import annotations\nimport os\n", encoding="utf-8")
     assert _extract_module_imports(py, "x") == {"os"}
+
+
+# --- Regression: whitespace must match Behave runtime semantics ---
+
+
+def test_step_with_extra_whitespace_is_undefined(tmp_path: Path) -> None:
+    """A step whose text has collapsed/normalised whitespace must NOT match
+    — behave's parser compares names verbatim, so runtime would report the
+    step undefined."""
+    _, _, graph = _project(
+        tmp_path,
+        "Feature: f\n  Scenario: s\n    Given I  have  things\n",
+        'from behave import given\n@given("I have things")\ndef g(ctx): pass\n',
+    )
+    assert len(graph.step_matches) == 1
+    assert graph.step_matches[0].step_definition is None
+
+
+def test_step_with_tab_is_undefined(tmp_path: Path) -> None:
+    """A literal tab in a step is significant — no whitespace normalisation."""
+    _, _, graph = _project(
+        tmp_path,
+        "Feature: f\n  Scenario: s\n    Given I have\tthings\n",
+        'from behave import given\n@given("I have things")\ndef g(ctx): pass\n',
+    )
+    assert graph.step_matches[0].step_definition is None
+
+
+# --- Regression: keyword registry takes priority over the `step` registry ---
+
+
+def test_keyword_definition_beats_step_definition(tmp_path: Path) -> None:
+    """Behave's StepRegistry checks steps[keyword] before steps["step"], so a
+    @given def wins over a @step def regardless of file scan order — even
+    when the @step def lives in an alphabetically earlier file."""
+    features = tmp_path / "features"
+    steps_dir = features / "steps"
+    steps_dir.mkdir(parents=True)
+    (features / "f.feature").write_text(
+        "Feature: f\n  Scenario: s\n    Given I login\n", encoding="utf-8"
+    )
+    (steps_dir / "a_steps.py").write_text(
+        'from behave import step\n@step("I login")\ndef s(ctx): pass\n',
+        encoding="utf-8",
+    )
+    (steps_dir / "z_steps.py").write_text(
+        'from behave import given\n@given("I login")\ndef g(ctx): pass\n',
+        encoding="utf-8",
+    )
+    project = scan_features(tmp_path, DoctorConfig())
+    defs = scan_steps(steps_dir, DoctorConfig())
+    graph = build_graph(project, defs)
+    match = graph.step_matches[0]
+    assert match.ambiguous is True
+    assert match.step_definition is not None
+    assert match.step_definition.keyword == "given"
+    assert match.step_definition.function_name == "g"
+    # step_usage must track the definition behave would actually run.
+    assert match.step_definition.def_id in graph.step_usage
+
+
+def test_step_match_records_all_candidates(tmp_path: Path) -> None:
+    """``StepMatch.matches`` lists every matching def in registry order."""
+    _, _, graph = _project(
+        tmp_path,
+        "Feature: f\n  Scenario: s\n    Given dup\n",
+        "from behave import given\n"
+        '@given("dup")\ndef a(ctx): pass\n'
+        '@given("dup")\ndef b(ctx): pass\n',
+    )
+    match = graph.step_matches[0]
+    assert match.ambiguous is True
+    assert len(match.matches) == 2
+    assert match.step_definition is match.matches[0]
+
+
+# --- Regression: impact analysis expands Scenario Outline rows ---
+
+
+def test_impact_expands_scenario_outline(tmp_path: Path) -> None:
+    """A def with a typed pattern (``{n:d}``) matches the concrete example
+    row, not the ``<n>`` template — impact must expand outline rows."""
+    from behave_doctor.impact import impact_analysis
+
+    features = tmp_path / "features"
+    steps_dir = features / "steps"
+    steps_dir.mkdir(parents=True)
+    (features / "cart.feature").write_text(
+        "Feature: cart\n"
+        "  Scenario Outline: add items\n"
+        "    Given I have <n> items\n"
+        "\n"
+        "    Examples:\n"
+        "      | n |\n"
+        "      | 5 |\n",
+        encoding="utf-8",
+    )
+    steps_file = steps_dir / "cart_steps.py"
+    steps_file.write_text(
+        'from behave import given\n@given("I have {n:d} items")\ndef g(ctx, n): pass\n',
+        encoding="utf-8",
+    )
+    result = impact_analysis(tmp_path, [str(steps_file)])
+    assert [s.name for s in result.affected_scenarios] == ["add items"]
+
+
+# --- Regression: ambiguous match via @step + @given reports both candidates ---
+
+
+def test_impact_counts_all_ambiguous_candidates(tmp_path: Path) -> None:
+    """Changing the shadowed @step def still flags the scenario — the match
+    is ambiguous, so either definition may matter."""
+    from behave_doctor.impact import impact_analysis
+
+    features = tmp_path / "features"
+    steps_dir = features / "steps"
+    steps_dir.mkdir(parents=True)
+    (features / "f.feature").write_text(
+        "Feature: f\n  Scenario: s\n    Given I login\n", encoding="utf-8"
+    )
+    a_file = steps_dir / "a.py"
+    a_file.write_text(
+        'from behave import step\n@step("I login")\ndef s(ctx): pass\n',
+        encoding="utf-8",
+    )
+    (steps_dir / "z.py").write_text(
+        'from behave import given\n@given("I login")\ndef g(ctx): pass\n',
+        encoding="utf-8",
+    )
+    result = impact_analysis(tmp_path, [str(a_file)])
+    assert [s.name for s in result.affected_scenarios] == ["s"]
+
+
+# --- Regression: tabless Examples blocks must not drop the whole feature ---
+
+
+def test_examples_block_without_table_is_tolerated(tmp_path: Path) -> None:
+    """Behave tolerates an ``Examples:`` block with no table (zero generated
+    scenarios); the feature must still be scanned, not skipped entirely."""
+    _, _, graph = _project(
+        tmp_path,
+        "Feature: f\n"
+        "  Scenario Outline: s\n"
+        "    Given x <a>\n"
+        "\n"
+        "    @tagged-empty\n"
+        "    Examples:\n"
+        "\n"
+        "  Scenario: plain\n"
+        "    Given y\n",
+        'from behave import given\n@given("y")\ndef g(ctx): pass\n',
+    )
+    # The outline step is scanned but stays unmatched (no definition for
+    # "x <a>"), and the plain scenario still matches — the feature was
+    # not dropped.
+    assert len(graph.step_matches) == 2
+    unmatched = [m for m in graph.step_matches if m.step_definition is None]
+    assert [m.step.name for m in unmatched] == ["x <a>"]
+
+
+def test_examples_block_without_table_does_not_error(tmp_path: Path) -> None:
+    """No scan error is recorded — behave would not error either."""
+    features = tmp_path / "features"
+    features.mkdir()
+    (features / "f.feature").write_text(
+        "Feature: f\n  Scenario Outline: s\n    Given x <a>\n\n    Examples:\n",
+        encoding="utf-8",
+    )
+    errors: list[tuple[Path, str]] = []
+    project = scan_features(tmp_path, DoctorConfig(), errors=errors)
+    assert errors == []
+    assert len(project.features) == 1
+
+
+def test_use_default_step_matcher_bare_call_resets_to_parse(tmp_path: Path) -> None:
+    """A bare ``use_default_step_matcher()`` resets the current matcher to
+    the default (``parse``), like Behave does between module switches."""
+    steps_dir = tmp_path / "steps"
+    steps_dir.mkdir()
+    (steps_dir / "s.py").write_text(
+        "from behave import use_step_matcher, use_default_step_matcher, given\n"
+        'use_step_matcher("re")\n'
+        '@given(r"re (\\d+)")\ndef a(ctx, n): pass\n'
+        "use_default_step_matcher()\n"
+        '@given("parse {n:d}")\ndef b(ctx, n): pass\n',
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps_dir, DoctorConfig())
+    types = {d.function_name: d.matcher_type for d in defs}
+    assert types == {"a": "re", "b": "parse"}
+
+
+def test_use_default_step_matcher_with_name_sets_new_default(tmp_path: Path) -> None:
+    """``use_default_step_matcher("cfparse")`` changes both the current
+    matcher and the default a later bare reset returns to."""
+    steps_dir = tmp_path / "steps"
+    steps_dir.mkdir()
+    (steps_dir / "s.py").write_text(
+        "from behave import use_step_matcher, use_default_step_matcher, given\n"
+        'use_default_step_matcher("cfparse")\n'
+        '@given("cf {n:d}")\ndef a(ctx, n): pass\n'
+        'use_step_matcher("re")\n'
+        '@given(r"re (\\d+)")\ndef b(ctx, n): pass\n'
+        "use_default_step_matcher()\n"
+        '@given("back to cf {n:d}")\ndef c(ctx, n): pass\n',
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps_dir, DoctorConfig())
+    types = {d.function_name: d.matcher_type for d in defs}
+    assert types == {"a": "cfparse", "b": "re", "c": "cfparse"}
+
+
+def test_deprecated_step_matcher_alias_is_recognised(tmp_path: Path) -> None:
+    """``step_matcher(name)`` — Behave's deprecated alias — also switches."""
+    steps_dir = tmp_path / "steps"
+    steps_dir.mkdir()
+    (steps_dir / "s.py").write_text(
+        "from behave import step_matcher, given\n"
+        'step_matcher("re")\n'
+        '@given(r"re (\\d+)")\ndef a(ctx, n): pass\n',
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps_dir, DoctorConfig())
+    assert [d.matcher_type for d in defs] == ["re"]
+
+
+def test_empty_feature_file_is_silently_skipped(tmp_path: Path) -> None:
+    """Behave's parser returns ``None`` for feature files with no Feature
+    statement (empty, comments only) and the runner skips them — they are
+    not parse errors."""
+    features = tmp_path / "features"
+    features.mkdir()
+    (features / "empty.feature").write_text("", encoding="utf-8")
+    (features / "comments.feature").write_text("# only a comment\n", encoding="utf-8")
+    (features / "ok.feature").write_text(
+        "Feature: f\n  Scenario: s\n    Given x\n", encoding="utf-8"
+    )
+    errors: list[tuple[Path, str]] = []
+    project = scan_features(tmp_path, DoctorConfig(), errors=errors)
+    assert errors == []
+    assert len(project.features) == 1
+
+
+def test_same_module_name_files_merge_imports(tmp_path: Path) -> None:
+    """``a.py`` and ``a/__init__.py`` both resolve to module ``a`` — their
+    imports must be merged in the dependency graph, not overwritten."""
+    steps_dir = tmp_path / "steps"
+    (steps_dir / "pkg").mkdir(parents=True)
+    (steps_dir / "pkg" / "__init__.py").write_text("import helper_one\n", encoding="utf-8")
+    (steps_dir / "pkg.py").write_text("import helper_two\n", encoding="utf-8")
+    # Neither file defines steps, so build the graph manually via defs.
+    d1 = StepDefinition(
+        keyword="given",
+        pattern="x",
+        matcher=None,
+        matcher_type="parse",
+        file=steps_dir / "pkg.py",
+        line=1,
+        function_name="a",
+        module="pkg",
+    )
+    d2 = StepDefinition(
+        keyword="given",
+        pattern="y",
+        matcher=None,
+        matcher_type="parse",
+        file=steps_dir / "pkg" / "__init__.py",
+        line=1,
+        function_name="b",
+        module="pkg",
+    )
+    project = Project(features=[], global_tags=[], metadata=Metadata())
+    graph = build_graph(project, [d1, d2])
+    assert graph.module_imports["pkg"] == {"helper_one", "helper_two"}
+
+
+def test_bom_feature_file_is_a_parse_error_like_runtime(tmp_path: Path) -> None:
+    """``behave.parser.parse_file`` decodes feature files with ``utf-8``
+    and never strips a BOM — a BOM'd feature fails to parse at runtime,
+    so it must surface as a scan error (BD305), not a silently valid file."""
+    features = tmp_path / "features"
+    features.mkdir()
+    (features / "bom.feature").write_bytes(b"\xef\xbb\xbfFeature: f\n  Scenario: s\n    Given x\n")
+    errors: list[tuple[Path, str]] = []
+    project = scan_features(tmp_path, DoctorConfig(), errors=errors)
+    assert len(project.features) == 0
+    assert len(errors) == 1
+    assert errors[0][0].name == "bom.feature"
+
+
+def test_step_file_with_coding_cookie_is_read_like_the_interpreter(
+    tmp_path: Path,
+) -> None:
+    """A step module declaring ``# -*- coding: latin-1 -*-`` imports fine at
+    runtime — the scanner must use the same decoding rules and not flag it
+    as unparseable."""
+    steps_dir = tmp_path / "features" / "steps"
+    steps_dir.mkdir(parents=True)
+    (steps_dir / "latin.py").write_bytes(
+        b"# -*- coding: latin-1 -*-\nfrom behave import given\n"
+        b'@given("caf\xe9")\ndef s(ctx): pass\n'
+    )
+    errors: list[tuple[Path, str]] = []
+    defs = scan_steps(steps_dir, DoctorConfig(), errors=errors)
+    assert errors == []
+    assert [d.pattern for d in defs] == ["café"]
+
+
+def test_step_file_with_unknown_coding_is_flagged(tmp_path: Path) -> None:
+    """An unknown ``# -*- coding: -*-`` name is a SyntaxError at import —
+    the scanner must report it instead of crashing."""
+    steps_dir = tmp_path / "features" / "steps"
+    steps_dir.mkdir(parents=True)
+    (steps_dir / "bad.py").write_text("# -*- coding: no-such-codec -*-\nx = 1\n", encoding="utf-8")
+    errors: list[tuple[Path, str]] = []
+    defs = scan_steps(steps_dir, DoctorConfig(), errors=errors)
+    assert defs == []
+    assert len(errors) == 1
+
+
+def test_matcher_switch_inside_main_guard_is_ignored(tmp_path: Path) -> None:
+    """``use_step_matcher`` inside ``if __name__ == "__main__":`` never runs
+    at import time — it must not affect the matcher of the module's defs."""
+    steps_dir = tmp_path / "features" / "steps"
+    steps_dir.mkdir(parents=True)
+    (steps_dir / "s.py").write_text(
+        "from behave import given, use_step_matcher\n"
+        'use_step_matcher("re")\n'
+        'if __name__ == "__main__":\n'
+        '    use_step_matcher("parse")\n'
+        "    from hypothesis import given as hg  # noqa: F401\n"
+        '@given("x(.+)")\n'
+        "def f(ctx): pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps_dir, DoctorConfig())
+    assert [(d.keyword, d.pattern, d.matcher_type) for d in defs] == [("given", "x(.+)", "re")]

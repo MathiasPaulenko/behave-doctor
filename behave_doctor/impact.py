@@ -29,6 +29,7 @@ from behave_doctor.graph.builder import (
     _attach_step_types,
     _extract_module_imports,
     _match_step,
+    _scenario_steps,
     _step_keyword_map,
 )
 from behave_doctor.model.config import DoctorConfig
@@ -107,12 +108,17 @@ class ImpactResult:
         affected_scenarios: Deduplicated, sorted by (feature_path, line).
         affected_features: Sorted unique feature file paths.
         summary: Aggregate counts.
+        scan_errors: ``(file, message)`` pairs for files that failed to
+            parse while scanning. An unparseable step file means its
+            definitions are missing and the affected-scenario list may be
+            incomplete — callers in CI should treat this as a failure.
     """
 
     changed_files: list[ChangedFile]
     affected_scenarios: list[AffectedScenario]
     affected_features: list[str]
     summary: ImpactSummary
+    scan_errors: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def scenario_names(self) -> list[str]:
@@ -171,9 +177,10 @@ def _resolve_changed_files(
         except ValueError:
             logger.warning("%s is outside the project root, skipping.", p)
             continue
-        if p.suffix == ".py":
+        suffix = p.suffix.lower()
+        if suffix == ".py":
             py_files.append(p)
-        elif p.suffix == ".feature":
+        elif suffix == ".feature":
             feature_files.append(p)
         else:
             # Non .py / .feature files are ignored with a warning.
@@ -182,12 +189,20 @@ def _resolve_changed_files(
 
 
 def _matched_patterns(steps: list[Any], step_definitions: list[StepDefinition]) -> list[str]:
-    """Match ``steps`` against definitions and return the matched patterns."""
+    """Match ``steps`` against definitions and return the matched patterns.
+
+    All matching candidates count — for impact purposes a change to any
+    definition that could match a step may affect the scenario, and
+    ambiguous matches are inherently fragile.
+    """
     patterns: list[str] = []
     for step in steps:
         match = _match_step(step, step_definitions)
-        if match.step_definition is not None:
-            patterns.append(match.step_definition.pattern)
+        candidates = match.matches or (
+            (match.step_definition,) if match.step_definition is not None else ()
+        )
+        for definition in candidates:
+            patterns.append(definition.pattern)
     return patterns
 
 
@@ -258,9 +273,9 @@ def _build_scenario_index(
     """Build an index of (feature_path, line, scenario_name, matched_patterns).
 
     For each scenario in the project, matches every step against the
-    definitions and records which patterns matched.  Scenario Outlines are
-    matched using their template steps (not expanded rows) since the scenario
-    name is what matters for ``behave --name``.  Scenarios inside ``Rule:``
+    definitions and records which patterns matched.  Scenario Outline rows
+    are expanded because the concrete values decide whether a typed
+    pattern (e.g. ``{n:d}``) actually matches.  Scenarios inside ``Rule:``
     blocks see the rule's background in addition to the feature background,
     as Behave does at runtime.
     """
@@ -278,9 +293,7 @@ def _build_scenario_index(
                 last_bg_type = getattr(bg_steps[-1], "step_type", None)
 
         for scenario in getattr(feature, "scenarios", []):
-            steps = _attach_step_types(
-                list(getattr(scenario, "steps", [])), keyword_map, last_bg_type
-            )
+            steps = _scenario_steps(scenario, keyword_map, last_bg_type)
             patterns = bg_patterns + _matched_patterns(steps, step_definitions)
             index.append(
                 (fpath, _scenario_line(scenario), getattr(scenario, "name", "") or "", patterns)
@@ -298,9 +311,7 @@ def _build_scenario_index(
                 if rb_steps:
                     rule_bg_last = getattr(rb_steps[-1], "step_type", None)
             for scenario in getattr(rule, "scenarios", []):
-                steps = _attach_step_types(
-                    list(getattr(scenario, "steps", [])), keyword_map, rule_bg_last
-                )
+                steps = _scenario_steps(scenario, keyword_map, rule_bg_last)
                 patterns = rule_bg_patterns + _matched_patterns(steps, step_definitions)
                 index.append(
                     (
@@ -331,10 +342,14 @@ def impact_analysis(
         summary counts.
 
     Raises:
+        TypeError: If ``project_path`` is ``None``.
         FileNotFoundError: If ``project_path`` or any changed file does not
             exist.
         ScanError: If the project cannot be scanned.
     """
+    if project_path is None:
+        msg = "impact_analysis() requires a project_path argument, got None."
+        raise TypeError(msg)
     root = Path(project_path).resolve()
     if not root.exists():
         raise FileNotFoundError(f"Project path does not exist: {root}")
@@ -352,10 +367,15 @@ def impact_analysis(
             summary=ImpactSummary(0, 0, 0, 0),
         )
 
-    # Scan the project (reuse existing components).
-    project = scan_features(root, config)
+    # Scan the project (reuse existing components). Parse errors are
+    # collected and reported — an unparseable step file means its
+    # definitions silently vanish, which would under-report impact.
+    feature_errors: list[tuple[Path, str]] = []
+    project = scan_features(root, config, errors=feature_errors)
     steps_path = (root / config.steps_dir).resolve()
-    step_definitions = scan_steps(steps_path, config)
+    step_errors: list[tuple[Path, str]] = []
+    step_definitions = scan_steps(steps_path, config, errors=step_errors)
+    scan_errors = [(str(path), message) for path, message in (*feature_errors, *step_errors)]
 
     # Resolve and classify changed files.
     changed_py, changed_feature = _resolve_changed_files(changed_files, root)
@@ -378,7 +398,7 @@ def impact_analysis(
     affected_modules = _affected_modules(changed_py, module_imports, root, steps_path)
 
     # environment.py hooks run for every scenario — a change there affects all.
-    env_changed = any(f.name == "environment.py" for f in changed_py)
+    env_changed = any(f.name.lower() == "environment.py" for f in changed_py)
 
     # Find affected step definition IDs from changed .py files.
     affected_def_ids = _find_affected_definitions(step_definitions, changed_py, affected_modules)
@@ -440,6 +460,7 @@ def impact_analysis(
         affected_scenarios=affected_scenarios,
         affected_features=affected_features,
         summary=summary,
+        scan_errors=scan_errors,
     )
 
 
@@ -500,6 +521,12 @@ def _format_text(result: ImpactResult) -> str:
     else:
         lines.append("  (none)")
 
+    if result.scan_errors:
+        lines.append("")
+        lines.append("Scan errors (results may be incomplete):")
+        for path, message in result.scan_errors:
+            lines.append(f"  - {path}: {message}")
+
     return "\n".join(lines)
 
 
@@ -526,6 +553,7 @@ def _format_json(result: ImpactResult) -> str:
             "scenarios_affected": result.summary.scenarios_affected,
             "features_affected": result.summary.features_affected,
         },
+        "scan_errors": [{"file": path, "message": message} for path, message in result.scan_errors],
     }
     return json.dumps(payload, sort_keys=True, indent=2)
 

@@ -84,7 +84,8 @@ class SarifReporter:
                     "artifactLocation": {"uri": uri},
                 }
             }
-            if diag.line is not None:
+            if diag.line is not None and diag.line >= 1:
+                # SARIF requires startLine >= 1.
                 location["physicalLocation"]["region"] = {"startLine": diag.line}
             result["locations"] = [location]
         return result

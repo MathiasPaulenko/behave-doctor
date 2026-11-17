@@ -47,7 +47,7 @@ step definitions with the AST — never importing or executing them.
   - **Quality** (BD201-205) — duplicate definitions, missing tags, oversized
     features, inconsistent tag casing, ambiguous step matches.
   - **Coverage** (BD301-305) — unused step definitions, undefined steps,
-    unused tags, orphan scenarios, unparseable feature files.
+    unused tags, orphan scenarios, unparseable source files.
   - **Complexity** (BD401-403) — scenario step count, step parameter count,
     feature file size.
   - **Dependencies** (BD501-503) — circular imports, unused imports, missing
@@ -173,7 +173,7 @@ are affected.
 | BD302 | undefined-step              | error    | Coverage     | No                                                 |
 | BD303 | unused-tag                  | info     | Coverage     | `exclude_tags` (global)                            |
 | BD304 | orphan-scenario             | warning  | Coverage     | No                                                 |
-| BD305 | unparseable-feature          | error    | Coverage     | No                                                 |
+| BD305 | unparseable-file            | error    | Coverage     | No                                                 |
 | BD401 | scenario-too-many-steps     | warning  | Complexity   | `max_steps` (default 10)                           |
 | BD402 | step-too-many-params        | warning  | Complexity   | `max_params` (default 5)                           |
 | BD403 | feature-too-large           | warning  | Complexity   | `max_lines` (default 300)                          |
@@ -321,10 +321,10 @@ print(format_impact(result, "names"))
 ```yaml
 repos:
   - repo: https://github.com/MathiasPaulenko/behave-doctor
-    rev: v1.4.0
+    rev: v1.5.1
     hooks:
       - id: behave-doctor
-        args: ["scan", "--severity", "warning", "--no-color"]
+        args: ["--severity", "warning", "--no-color"]
 ```
 
 ## How it works

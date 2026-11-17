@@ -431,9 +431,10 @@ def test_text_reporter_location_with_only_file() -> None:
 # --- normalize_step_text edge cases ---
 
 
-def test_normalize_step_text_collapses_whitespace() -> None:
-    """Step names never contain the keyword; only whitespace is normalised."""
-    assert normalize_step_text("  multiple   spaces ") == "multiple spaces"
+def test_normalize_step_text_preserves_internal_whitespace() -> None:
+    """Behave matches step names verbatim — internal whitespace is significant."""
+    assert normalize_step_text("  multiple   spaces ") == "multiple   spaces"
+    assert normalize_step_text("a\tb") == "a\tb"
 
 
 def test_normalize_step_text_empty_string() -> None:
@@ -524,14 +525,15 @@ def test_config_exclude_as_string_does_not_crash(tmp_path: Path) -> None:
 
 
 def test_config_exclude_paths_as_non_list(tmp_path: Path) -> None:
-    """exclude.paths as a non-list should not crash — should use empty list."""
+    """A bare string under ``exclude.paths`` coerces to a one-element list,
+    matching how a top-level ``exclude_paths = "x"`` is treated."""
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[tool.behave-doctor]\nexclude = {paths = "not a list"}\n',
         encoding="utf-8",
     )
     cfg = DoctorConfig.from_pyproject(pyproject)
-    assert cfg.exclude_paths == []
+    assert cfg.exclude_paths == ["not a list"]
 
 
 def test_config_exclude_tags_as_non_list(tmp_path: Path) -> None:
@@ -549,7 +551,8 @@ def test_config_exclude_tags_as_non_list(tmp_path: Path) -> None:
 
 
 def test_scan_features_with_bom(tmp_path: Path) -> None:
-    """Feature files with UTF-8 BOM should be parsed, not skipped."""
+    """Feature files with a UTF-8 BOM are a parse error — Behave decodes
+    them with plain ``utf-8``, so the BOM breaks ``Feature:`` at runtime."""
     from behave_doctor.scanner.project_scanner import scan_features
 
     features = tmp_path / "features"
@@ -558,8 +561,10 @@ def test_scan_features_with_bom(tmp_path: Path) -> None:
         "\ufeffFeature: BOM Test\n  Scenario: Test\n    Given something\n",
         encoding="utf-8",
     )
-    project = scan_features(tmp_path, DoctorConfig())
-    assert len(project.features) == 1
+    errors: list[tuple[Path, str]] = []
+    project = scan_features(tmp_path, DoctorConfig(), errors=errors)
+    assert len(project.features) == 0
+    assert len(errors) == 1
 
 
 def test_scan_steps_with_bom(tmp_path: Path) -> None:
@@ -633,8 +638,9 @@ def test_bd403_with_bom_feature_file(tmp_path: Path) -> None:
         config=DoctorConfig(),
     )
     diagnostics = FeatureTooLarge().check(ctx)
-    # Should detect the large file without crashing on BOM.
-    assert len(diagnostics) == 1
+    # The BOM'd feature never reaches the model (parse error), so BD403
+    # has nothing to report — it must not crash either way.
+    assert diagnostics == []
 
 
 # --- BUG F: to_dot escaping ---
@@ -800,13 +806,14 @@ def test_bd403_handles_unreadable_file(tmp_path: Path) -> None:
 
 
 def test_normalize_step_text_with_tabs() -> None:
-    """Tabs in step text are collapsed to single spaces."""
-    assert normalize_step_text("the user\tdoes something") == "the user does something"
+    """Tabs in step text are kept verbatim — behave matches names verbatim."""
+    assert normalize_step_text("the user\tdoes something") == "the user\tdoes something"
 
 
 def test_normalize_step_text_mixed_tabs_and_spaces() -> None:
-    """Mixed tabs and spaces should all be collapsed."""
-    assert normalize_step_text("the  \t  user") == "the user"
+    """Mixed tabs and spaces are preserved; only outer whitespace is stripped."""
+    assert normalize_step_text("the  \t  user") == "the  \t  user"
+    assert normalize_step_text("  outer  ") == "outer"
 
 
 # --- JSON reporter with non-serializable metadata ---
@@ -1173,3 +1180,298 @@ def test_outline_example_rows_expand_counts(tmp_path: Path) -> None:
     assert "3 scenarios found" in scenario_diag.message
     step_diag = next(d for d in report.diagnostics if d.rule_id == "BD103")
     assert "6 steps found" in step_diag.message
+
+
+# --- Regression: is_excluded must not match ancestors above the scan root ---
+
+
+def test_is_excluded_does_not_match_above_within(tmp_path: Path) -> None:
+    """An exclude pattern matching a *parent* of the project root must not
+    exclude the entire project (e.g. 'build' when the project lives under
+    a 'build' directory)."""
+    project = tmp_path / "build" / "project"
+    feature = project / "features" / "x.feature"
+    feature.parent.mkdir(parents=True)
+    feature.write_text("Feature: x\n", encoding="utf-8")
+    config = DoctorConfig(exclude_paths=["build"])
+    # Without `within`, the "build" ancestor matches and excludes everything.
+    assert config.is_excluded(feature) is True
+    # With the scan root bound, only in-project ancestors are considered.
+    assert config.is_excluded(feature, within=project / "features") is False
+
+
+def test_is_excluded_within_still_matches_dir_patterns(tmp_path: Path) -> None:
+    """Directory patterns must still work when `within` bounds the walk."""
+    root = tmp_path / "features"
+    feature = root / "excluded" / "x.feature"
+    config = DoctorConfig(exclude_paths=["excluded"])
+    assert config.is_excluded(feature, within=root) is True
+
+
+# --- Regression: unparseable step files surface as diagnostics (BD305) ---
+
+
+def test_unparseable_step_file_surfaces_bd305(tmp_path: Path) -> None:
+    """A .py file that fails to parse must produce a BD305 diagnostic —
+    Behave would abort importing it, so a silent skip hides a broken suite."""
+    features = tmp_path / "features"
+    steps = features / "steps"
+    steps.mkdir(parents=True)
+    (features / "ok.feature").write_text(
+        "Feature: ok\n  Scenario: s\n    Given ok\n", encoding="utf-8"
+    )
+    (steps / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+    report = build_report(tmp_path, DoctorConfig())
+    bd305 = [d for d in report.diagnostics if d.rule_id == "BD305"]
+    assert len(bd305) == 1
+    assert bd305[0].file == steps / "broken.py"
+    assert "step file" in bd305[0].message
+
+
+def test_scan_steps_collects_errors(tmp_path: Path) -> None:
+    """scan_steps(errors=...) must receive (path, message) for failed files."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "bad.py").write_text("def bad(:\n", encoding="utf-8")
+    errors: list[tuple[Path, str]] = []
+    defs = scan_steps(steps, DoctorConfig(), errors=errors)
+    assert defs == []
+    assert len(errors) == 1
+    assert errors[0][0] == steps / "bad.py"
+
+
+# --- Regression: module dotted path for __init__.py ---
+
+
+def test_module_dotted_path_strips_init() -> None:
+    """pkg/__init__.py must map to module 'pkg', matching `import pkg`."""
+    from behave_doctor.scanner.step_scanner import _module_dotted_path
+
+    steps_path = Path("steps")
+    assert _module_dotted_path(Path("steps/pkg/__init__.py"), steps_path) == "pkg"
+    assert _module_dotted_path(Path("steps/pkg/mod.py"), steps_path) == "pkg.mod"
+    assert _module_dotted_path(Path("steps/plain.py"), steps_path) == "plain"
+
+
+# --- Regression: imports inside functions must not leak to module scope ---
+
+
+def test_import_inside_function_does_not_create_module_alias(tmp_path: Path) -> None:
+    """`import behave` inside a function does not bind `behave` at module
+    level, so @behave.given decorators must not resolve."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "scoped.py").write_text(
+        "def setup():\n"
+        "    import behave\n"
+        "    return behave\n"
+        "\n"
+        '@behave.given("a step")\n'
+        "def impl(ctx): pass\n",
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert defs == []
+
+
+def test_module_level_def_shadows_bare_decorator(tmp_path: Path) -> None:
+    """A module-level `def given(...)` shadows the bare-name fallback —
+    it is a local function, not a step decorator."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "shadow.py").write_text(
+        'def given(text):\n    return lambda f: f\n\n@given("not a step")\ndef impl(ctx): pass\n',
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert defs == []
+
+
+def test_module_level_assignment_shadows_bare_decorator(tmp_path: Path) -> None:
+    """A module-level assignment to `given` shadows the bare-name fallback."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "shadow2.py").write_text(
+        'given = lambda text: (lambda f: f)\n\n@given("not a step")\ndef impl(ctx): pass\n',
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert defs == []
+
+
+# --- Regression: format_report validates fmt like format_impact does ---
+
+
+def test_format_report_rejects_empty_format() -> None:
+    """format_report(report, '') must raise ValueError, not AttributeError."""
+    from datetime import datetime
+
+    from behave_doctor.cli.formatters import format_report
+    from behave_doctor.model.project_report import ProjectReport, ProjectStatistics
+
+    report = ProjectReport(
+        project_path=Path("."),
+        diagnostics=[],
+        statistics=ProjectStatistics(),
+        scanned_at=datetime(2024, 1, 1),
+        scan_duration_ms=0,
+    )
+    import pytest
+
+    with pytest.raises(ValueError, match="non-empty"):
+        format_report(report, "")
+    with pytest.raises(ValueError, match="non-empty"):
+        format_report(report, "   ")
+
+
+# --- Regression: SARIF startLine must be >= 1 ---
+
+
+def test_sarif_reporter_line_zero_omits_region() -> None:
+    """SARIF startLine must be >= 1; a line of 0 must omit the region."""
+    from datetime import datetime
+
+    from behave_doctor.model.project_report import ProjectReport, ProjectStatistics
+
+    diag = Diagnostic(
+        rule_id="BD101",
+        rule_name="count",
+        severity=Severity.INFO,
+        category=Category.STRUCTURE,
+        message="test",
+        file=Path("features/x.feature"),
+        line=0,
+    )
+    report = ProjectReport(
+        project_path=Path("."),
+        diagnostics=[diag],
+        statistics=ProjectStatistics(),
+        scanned_at=datetime(2024, 1, 1),
+        scan_duration_ms=0,
+    )
+    out = SarifReporter().format(report)
+    import json
+
+    data = json.loads(out)
+    location = data["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
+    assert "region" not in location
+
+
+# --- Regression: approximate matcher keeps anonymous placeholder params ---
+
+
+def test_approximate_matcher_parameters_include_anonymous(tmp_path: Path) -> None:
+    """Anonymous {} placeholders become argN parameters for approximate matchers."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "approx.py").write_text(
+        'from behave import given\n@given("{x:Bogus} and {}")\ndef g(ctx, x, y): pass\n',
+        encoding="utf-8",
+    )
+    defs = scan_steps(steps, DoctorConfig())
+    assert len(defs) == 1
+    assert defs[0].approximate is True
+    assert defs[0].parameters == ["x", "arg0"]
+
+
+# --- Regression: CLI -h shows help ---
+
+
+def test_cli_dash_h_shows_help() -> None:
+    """`-h` was listed as a known command but click only registered --help."""
+    from behave_doctor.cli.app import main
+
+    assert main(["-h"]) == 0
+
+
+# --- Regression: impact_analysis validates project_path ---
+
+
+def test_impact_analysis_none_raises_type_error() -> None:
+    """impact_analysis(None, ...) must raise TypeError, like scan_project."""
+    import pytest
+
+    from behave_doctor import impact_analysis
+
+    with pytest.raises(TypeError, match="project_path"):
+        impact_analysis(None, [])  # type: ignore[arg-type]
+
+
+# --- Regression: BD304 honours exclude_tags like BD303 does ---
+
+
+def test_bd304_excluded_tag_behaves_as_tagless(tmp_path: Path) -> None:
+    """A scenario whose only tag is in exclude_tags is skipped, not flagged
+    orphan — the tag is excluded from coverage analysis entirely."""
+    from behave_doctor.rules.base import RuleContext
+    from behave_doctor.rules.coverage import OrphanScenario
+    from behave_doctor.scanner import scan_features
+
+    features = tmp_path / "features"
+    features.mkdir()
+    (features / "f.feature").write_text(
+        "Feature: f\n"
+        "  @manual\n"
+        "  Scenario: only-manual\n"
+        "    Given x\n"
+        "  Scenario: tagless\n"
+        "    Given x\n",
+        encoding="utf-8",
+    )
+    project = scan_features(tmp_path, DoctorConfig())
+    ctx = RuleContext(
+        project=project,
+        step_definitions=[],
+        dependency_graph=DependencyGraph(),
+        config=DoctorConfig(exclude_tags=["@manual"]),
+    )
+    diagnostics = OrphanScenario().check(ctx)
+    assert diagnostics == []
+
+
+def test_bd304_excluded_tag_still_leaves_other_tags(tmp_path: Path) -> None:
+    """Excluded tags don't mask orphan status from remaining unique tags."""
+    from behave_doctor.rules.base import RuleContext
+    from behave_doctor.rules.coverage import OrphanScenario
+    from behave_doctor.scanner import scan_features
+
+    features = tmp_path / "features"
+    features.mkdir()
+    (features / "f.feature").write_text(
+        "Feature: f\n  @manual @unique-x\n  Scenario: s\n    Given x\n",
+        encoding="utf-8",
+    )
+    project = scan_features(tmp_path, DoctorConfig())
+    ctx = RuleContext(
+        project=project,
+        step_definitions=[],
+        dependency_graph=DependencyGraph(),
+        config=DoctorConfig(exclude_tags=["@manual"]),
+    )
+    diagnostics = OrphanScenario().check(ctx)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].metadata["tags"] == ["@unique-x"]
+
+
+def test_text_reporter_quiet_counts_hidden_warnings() -> None:
+    """--quiet hides warnings but the summary must still count them."""
+    from datetime import datetime
+
+    from behave_doctor.model.project_report import ProjectReport, ProjectStatistics
+
+    diag = Diagnostic(
+        rule_id="BD301",
+        rule_name="unused",
+        severity=Severity.WARNING,
+        category=Category.COVERAGE,
+        message="Unused step",
+    )
+    report = ProjectReport(
+        project_path=Path("test/"),
+        diagnostics=[diag],
+        statistics=ProjectStatistics(),
+        scanned_at=datetime(2024, 1, 1),
+        scan_duration_ms=0,
+    )
+    out = TextReporter(use_color=False, quiet=True).format(report)
+    assert "0 errors, 1 warnings" in out

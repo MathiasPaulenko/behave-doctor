@@ -7,7 +7,7 @@ from behave_doctor.model.dependency_graph import DependencyGraph
 
 def _escape_dot_string(s: str) -> str:
     """Escape a string for use in a DOT double-quoted identifier."""
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
 
 
 def to_dot(graph: DependencyGraph) -> str:

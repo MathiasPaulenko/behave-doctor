@@ -441,3 +441,39 @@ def test_rule_background_impact(tmp_path: Path) -> None:
     # Changing s.py affects defs a and b → both scenarios (rule bg used by
     # "in rule"; "x" used by both).
     assert names == {"in rule", "outside"}
+
+
+def test_impact_reports_scan_errors(tmp_path: Path) -> None:
+    """An unparseable step file means its definitions vanished — the result
+    must surface that instead of silently under-reporting impact."""
+    features = tmp_path / "features"
+    steps = features / "steps"
+    steps.mkdir(parents=True)
+    (features / "a.feature").write_text(
+        "Feature: f\n  Scenario: s\n    Given x\n", encoding="utf-8"
+    )
+    (steps / "ok.py").write_text(
+        'from behave import given\n@given("x")\ndef d(ctx): pass\n', encoding="utf-8"
+    )
+    (steps / "broken.py").write_text("def (((\n", encoding="utf-8")
+
+    result = impact_analysis(tmp_path, [steps / "ok.py"])
+    assert len(result.scan_errors) == 1
+    assert result.scan_errors[0][0].endswith("broken.py")
+    # And the error shows up in the JSON output.
+    payload = json.loads(format_impact(result, "json"))
+    assert payload["scan_errors"][0]["file"].endswith("broken.py")
+
+
+def test_impact_no_scan_errors_by_default(tmp_path: Path) -> None:
+    features = tmp_path / "features"
+    steps = features / "steps"
+    steps.mkdir(parents=True)
+    (features / "a.feature").write_text(
+        "Feature: f\n  Scenario: s\n    Given x\n", encoding="utf-8"
+    )
+    (steps / "ok.py").write_text(
+        'from behave import given\n@given("x")\ndef d(ctx): pass\n', encoding="utf-8"
+    )
+    result = impact_analysis(tmp_path, [steps / "ok.py"])
+    assert result.scan_errors == []

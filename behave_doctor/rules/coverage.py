@@ -83,21 +83,22 @@ class UndefinedStep(Rule):
 
 @register
 class UnparseableFeature(Rule):
-    """BD305: feature files that could not be parsed and were skipped.
+    """BD305: source files that could not be parsed and were skipped.
 
-    Behave aborts the run when a feature file fails to parse, so a file that
-    is silently skipped here would break the suite at runtime — and every
-    scenario it contains is invisible to all other rules.
+    Behave aborts the run when a feature file fails to parse or a step
+    module fails to import, so a file that is silently skipped here would
+    break the suite at runtime — and everything it contains is invisible
+    to all other rules.
     """
 
     id = "BD305"
-    name = "unparseable-feature"
+    name = "unparseable-file"
     severity = Severity.ERROR
     category = Category.COVERAGE
-    description = "Feature file could not be parsed; its scenarios were skipped."
+    description = "Source file could not be parsed; its contents were skipped."
 
     def check(self, context: RuleContext) -> list[Diagnostic]:
-        return [
+        diagnostics = [
             Diagnostic(
                 rule_id=self.id,
                 rule_name=self.name,
@@ -110,6 +111,20 @@ class UnparseableFeature(Rule):
             )
             for file, error in context.scan_errors
         ]
+        diagnostics.extend(
+            Diagnostic(
+                rule_id=self.id,
+                rule_name=self.name,
+                severity=self.severity,
+                category=self.category,
+                message=f"Could not parse step file: {error}",
+                file=file,
+                suggestion="Fix the Python syntax; Behave will fail to import this module.",
+                metadata={"error": error},
+            )
+            for file, error in context.step_scan_errors
+        )
+        return diagnostics
 
 
 @register
@@ -162,7 +177,13 @@ class OrphanScenario(Rule):
         # tags — and Rule-level tags for scenarios inside ``Rule:`` blocks —
         # are inherited by every generated scenario in Behave tag filters.
         # Scenario Outlines are expanded into one entry per example row so tag
-        # usage is counted correctly.
+        # usage is counted correctly. ``exclude_tags`` removes tags from the
+        # analysis entirely, as it does for BD303.
+        excluded = {t.lstrip("@").lower() for t in context.config.exclude_tags}
+
+        def _relevant(names: set[str]) -> set[str]:
+            return {n for n in names if n.lstrip("@").lower() not in excluded}
+
         entries: list[tuple[Any, list[set[str]]]] = []
         for feature in context.project.features:
             featuretag_names = {tag_name(t) for t in feature.tags}
@@ -170,7 +191,7 @@ class OrphanScenario(Rule):
                 ruletag_names = {tag_name(t) for t in rule.tags} if rule is not None else set()
                 inherited = featuretag_names | ruletag_names
                 tag_sets = [
-                    {tag_name(t) for t in tag_set} | inherited
+                    _relevant({tag_name(t) for t in tag_set} | inherited)
                     for tag_set in scenario_tag_sets(scenario)
                 ]
                 entries.append((scenario, tag_sets))

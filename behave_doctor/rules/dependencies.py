@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+import tokenize
 from pathlib import Path
 
 from behave_doctor.graph.cycles import detect_cycles
@@ -14,6 +15,9 @@ from behave_doctor.rules.base import Rule, RuleContext
 
 # Regex to extract Python identifiers from string annotations.
 _IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# ``type X = ...`` aliases exist only on Python 3.12+.
+_TYPE_ALIAS = getattr(ast, "TypeAlias", None)
 
 
 @register
@@ -63,9 +67,12 @@ class UnusedImport(Rule):
 
     def _check_file(self, file: Path) -> list[Diagnostic]:
         try:
-            source = file.read_text(encoding="utf-8-sig")
+            # ``tokenize.open`` matches interpreter decoding (BOM + coding cookie).
+            with tokenize.open(file) as handle:
+                source = handle.read()
             tree = ast.parse(source, filename=str(file), type_comments=True)
-        except (SyntaxError, OSError, UnicodeError):
+        # ValueError: ast.parse raises it for null bytes on Python < 3.12.
+        except (SyntaxError, OSError, UnicodeError, ValueError):
             return []
 
         imports: list[tuple[str, int]] = []
@@ -84,8 +91,13 @@ class UnusedImport(Rule):
                     local = alias.asname or alias.name
                     imports.append((local, node.lineno))
 
-        # Collect all Name references and string annotation names in the file body.
+        # Collect all Name references and annotation names in the file body.
         used: set[str] = set()
+        # Identifiers inside string annotations (forward references) and
+        # ``# type:`` comments may reference imports. Only annotation
+        # positions count — arbitrary strings (docstrings, step patterns)
+        # must not mark an import as used.
+        annotation_words: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Name):
                 used.add(node.id)
@@ -95,20 +107,25 @@ class UnusedImport(Rule):
                     root = root.value
                 if isinstance(root, ast.Name):
                     used.add(root.id)
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                # String annotations (forward references) may reference imports.
-                # Extract identifiers so "List[int]" yields "List" and "int".
-                words = set(_IDENTIFIER_RE.findall(node.value))
-                for local, _ in imports:
-                    if local in words:
-                        used.add(local)
+
+            annotation: ast.expr | None = None
+            if isinstance(node, (ast.arg, ast.AnnAssign)):
+                annotation = node.annotation
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                annotation = node.returns
+            elif _TYPE_ALIAS is not None and isinstance(node, _TYPE_ALIAS):
+                annotation = node.value
+            if annotation is not None:
+                for sub in ast.walk(annotation):
+                    if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                        annotation_words.update(_IDENTIFIER_RE.findall(sub.value))
             # Check type_comment attributes (from `# type: ...` comments).
             tc = getattr(node, "type_comment", None)
             if tc and isinstance(tc, str):
-                words = set(_IDENTIFIER_RE.findall(tc))
-                for local, _ in imports:
-                    if local in words:
-                        used.add(local)
+                annotation_words.update(_IDENTIFIER_RE.findall(tc))
+        for local, _ in imports:
+            if local in annotation_words:
+                used.add(local)
 
         diagnostics: list[Diagnostic] = []
         for local, lineno in imports:
